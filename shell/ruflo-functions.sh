@@ -473,7 +473,7 @@ ruflo-onboard() {
 	if [ "$do_aqe" -eq 1 ]; then
 		echo ""; echo "## 3/3 agentic-qe"
 		if command -v aqe >/dev/null 2>&1; then
-			ruflo-setup-aqe
+			ruflo-setup-aqe || echo "⚠  setup-aqe reported issues — see docs/TROUBLESHOOTING.md"
 		else
 			echo "⚠  agentic-qe not installed — re-run:  install.sh --with-aqe   (or npm i -g agentic-qe)"
 		fi
