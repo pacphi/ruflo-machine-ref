@@ -113,6 +113,136 @@ fs.writeFileSync(f,s);
 		echo "⚠  Statusline version patch failed (left as-is)"
 		return 1
 	fi
+
+	# Activation footer: append (below ruflo's native render) a two-line footer that
+	# shows ONLY the features genuinely active in this project:
+	#   🧠 SONA  <patterns> · <traj> [· ⚡ HNSW]        🛡 aidefence on
+	#   🎓 Agentic QE  <patterns> [· <traj>] [· <vec>] · <size>
+	# Append-only: never rewrites ruflo's own lines, so it can't break on a ruflo
+	# template change. self-learning + security are fs-only; the agentic-qe line uses
+	# one guarded sqlite3 call only when .agentic-qe/memory.db exists. The injector is
+	# UPGRADE-SAFE: it strips any prior block (legacy or BEGIN/END) and re-injects, so
+	# re-running after a ruflo/agentic-qe upgrade always lands the current helper.
+	local _seg_tmp; _seg_tmp=$(mktemp)
+	cat > "$_seg_tmp" <<'RUFLO_SEG_EOF'
+/* ruflo-seg:BEGIN */
+function rufloActivationSegments(cwd){
+  try {
+    var fs = require("fs"), path = require("path"), cp = require("child_process");
+    var DIM = "[2m", G = "[1;32m", Y = "[1;33m", C = "[1;36m", R = "[0m";
+    // execFileSync (no shell) — db path / sql are passed as argv, never interpolated into a command line.
+    function q(db, sql){ try { return cp.execFileSync("sqlite3", [db, sql], {stdio:["ignore","pipe","ignore"], timeout:1500}).toString().trim(); } catch(e){ return ""; } }
+    function bar(n, max){ n = Math.max(0, Math.min(max, n)); return "[" + "●".repeat(n) + "○".repeat(max - n) + "]"; }
+    // ── self-learning (SONA): own line with a volume bar + Δ LoRA (cached at train) ──
+    var learn = "";
+    try {
+      var sp = path.join(cwd, ".claude-flow", "neural", "stats.json");
+      if (fs.existsSync(sp)) {
+        var s = JSON.parse(fs.readFileSync(sp, "utf8"));
+        var pn = s.patternsLearned || 0, tj = s.trajectoriesRecorded || 0, parts = [];
+        if (pn > 0 || tj > 0) {
+          if (pn > 0) parts.push(pn + " patterns");
+          if (tj > 0) parts.push(tj + " traj");
+          // Δ LoRA — transient last-step metric, NOT persisted by ruflo and not derivable
+          // from the lora-checkpoint (ruvector-training.js). Cached by ruflo-neural-train.
+          try { var ld = JSON.parse(fs.readFileSync(path.join(cwd, ".claude-flow", "neural", "lora-delta.json"), "utf8")); if (typeof ld.deltaNorm === "number") parts.push(DIM + "Δ" + R + ld.deltaNorm.toFixed(2) + " LoRA"); } catch(e){}
+          if (fs.existsSync(path.join(cwd, ".swarm", "hnsw.index"))) parts.push(G + "⚡ HNSW" + R);
+          var dots = Math.max(0, Math.min(5, Math.round(pn / 10)));   // volume gauge: ~10 patterns per dot
+          learn = C + "🧠 SONA" + R + "  " + DIM + bar(dots, 5) + R + "  " + parts.join(DIM + " · " + R);
+        }
+      }
+    } catch(e){}
+    // ── security (aidefence loaded in the global ruflo install) ──
+    var sec = "";
+    try {
+      var ad = path.join(path.dirname(process.execPath), "..", "lib", "node_modules", "ruflo", "node_modules", "@claude-flow", "aidefence", "package.json");
+      if (fs.existsSync(ad)) sec = G + "🛡 aidefence on" + R;
+    } catch(e){}
+    // ── agentic-qe (one guarded sqlite3 read) — branch + icon-tagged metrics ──
+    var qe = "";
+    try {
+      var db = path.join(cwd, ".agentic-qe", "memory.db");
+      if (fs.existsSync(db)) {
+        var qp = [];
+        var pat = q(db, "SELECT COUNT(*) FROM qe_patterns");
+        if (pat && Number(pat) > 0) qp.push("🎓 " + pat + " patterns");
+        var qtj = q(db, "SELECT COUNT(*) FROM qe_trajectories");
+        if (qtj && Number(qtj) > 0) qp.push("🧭 " + qtj + " traj");
+        // QE vectors live in different tables across aqe versions (qe_pattern_embeddings
+        // is the per-pattern embedding store; older/other builds use vectors/embeddings).
+        var qv = 0;
+        for (var vt of ["qe_pattern_embeddings", "vectors", "embeddings"]) { var vc = q(db, "SELECT COUNT(*) FROM " + vt); if (vc && Number(vc) > 0) { qv = Number(vc); break; } }
+        if (qv > 0) qp.push("🧬 " + qv + " vec" + G + "⚡" + R);
+        try { var kb = Math.round(fs.statSync(db).size / 1024); qp.push("💾 " + (kb >= 1024 ? (kb/1024).toFixed(1) + "MB" : kb + "KB")); } catch(e){}
+        qe = Y + "🎓 Agentic QE" + R + "  " + (qp.length ? qp.join(DIM + " · " + R) : "on");
+      }
+    } catch(e){}
+    // ── assemble: line 1 = learning + security; line 2 = agentic-qe ──
+    var l1 = []; if (learn) l1.push(learn); if (sec) l1.push(sec);
+    var out = [];
+    if (l1.length) out.push(l1.join("      "));
+    if (qe) out.push(qe);
+    if (!out.length) return "";
+    return "\n" + DIM + "─".repeat(44) + R + "\n" + out.join("\n");
+  } catch(e){ return ""; }
+}
+/* ruflo-seg:END */
+RUFLO_SEG_EOF
+	if ! SL="$sl" SEG="$_seg_tmp" node -e '
+const fs=require("fs"); const f=process.env.SL; let s=fs.readFileSync(f,"utf8");
+const helper=fs.readFileSync(process.env.SEG,"utf8").trim();
+// Strip any prior block: new BEGIN/END, and the legacy marker+function form.
+s=s.replace(/\/\* ruflo-seg:BEGIN \*\/[\s\S]*?\/\* ruflo-seg:END \*\/\n?/,"");
+s=s.replace(/\/\* ruflo-machine-ref: activation segments \*\/\s*\nfunction rufloActivationSegments\(cwd\)\{[\s\S]*?\n\}\n/,"");
+// Strip any prior console.log wrap so we can re-add cleanly.
+s=s.replace(/ \+ rufloActivationSegments\(process\.cwd\(\)\)/g,"");
+// Re-inject helper after the shebang (keep shebang on line 1).
+const lines=s.split("\n");
+const at=lines[0].startsWith("#!")?1:0;
+lines.splice(at,0,helper);
+s=lines.join("\n");
+// Wrap the final render.
+s=s.replace(/console\.log\(generateStatusline\(\)\)/,"console.log(generateStatusline() + rufloActivationSegments(process.cwd()))");
+fs.writeFileSync(f,s);
+'; then
+		rm -f "$_seg_tmp"
+		echo "⚠  Statusline activation-footer patch failed (left as-is)"
+	else
+		rm -f "$_seg_tmp"
+		echo "✓ Statusline activation footer present (🧠 SONA / 🛡 aidefence / 🎓 Agentic QE)"
+	fi
+
+	# Ensure Claude Code actually RUNS the rich statusline.cjs. `aqe init` (and
+	# `ruflo init`) can repoint .claude/settings.json at a minimal statusline-v3.cjs,
+	# which would hide the footer. Make statusline.cjs primary (falls back to v3, then
+	# a literal). Only when patching the default project statusline.
+	if [ "$sl" = ".claude/helpers/statusline.cjs" ] && [ -f ".claude/settings.json" ] && command -v python3 >/dev/null 2>&1; then
+		if python3 - <<'PY' 2>/dev/null
+import json, re, sys
+p = ".claude/settings.json"
+d = json.load(open(p))
+sl = d.get("statusLine") or {}
+cur = sl.get("command", "")
+m = re.search(r'statusline(-v3)?\.cjs', cur)
+if m and m.group(0) == 'statusline.cjs':
+    sys.exit(0)  # already primary — no change
+sl["type"] = "command"
+sl["command"] = ('sh -c \'node "${CLAUDE_PROJECT_DIR:-.}/.claude/helpers/statusline.cjs" 2>/dev/null '
+                 '|| node "${CLAUDE_PROJECT_DIR:-.}/.claude/helpers/statusline-v3.cjs" 2>/dev/null '
+                 '|| echo "▊ RuFlo + Agentic QE v3"\'')
+sl.setdefault("refreshMs", 5000)
+sl.setdefault("enabled", True)
+d["statusLine"] = sl
+json.dump(d, open(p, "w"), indent=2)
+sys.exit(1)  # changed
+PY
+		then
+			echo "✓ settings.json already runs the rich statusline.cjs"
+		else
+			echo "✓ Pointed settings.json statusLine at statusline.cjs (restore the rich footer)"
+		fi
+	fi
+
 	local shown
 	shown="$(printf '{}' | node "$sl" 2>/dev/null | sed -E 's/\x1b\[[0-9;]*m//g' \
 		| grep -oE 'RuFlo V[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1 | sed 's/RuFlo V//')"
@@ -124,8 +254,14 @@ fs.writeFileSync(f,s);
 }
 
 ruflo-setup-project() {
-	local extra_args
-	if [ "$#" -gt 0 ]; then extra_args="$*"; else extra_args="--full"; fi
+	local with_security=0 extra_args="" a
+	for a in "$@"; do
+		case "$a" in
+			--with-security) with_security=1 ;;
+			*) extra_args="$extra_args $a" ;;
+		esac
+	done
+	[ -z "${extra_args// }" ] && extra_args="--full"
 	# shellcheck disable=SC2086
 	ruflo init $extra_args --force || return $?
 
@@ -218,7 +354,152 @@ import sys; sys.exit(0 if prev == os.environ['RUFLO_DB_PATH'] else 1)
 		fi
 	fi
 
+	# Optional security pass (--with-security): verify the built-in security surface.
+	if [ "$with_security" -eq 1 ]; then
+		echo "## Security pass (--with-security)"
+		if command -v ruflo-security-verify >/dev/null 2>&1; then
+			ruflo-security-verify --quick || echo "⚠  security verification reported issues"
+		else
+			echo "⚠  --with-security requested but ruflo-security-verify not on PATH (run install.sh)"
+		fi
+	fi
+
 	ruflo doctor
+}
+
+# ---------------------------------------------------------------------------
+# Opt-in: initialize agentic-qe (a SEPARATE package) in the current repo, with
+# native-SQLite repair + half-init repair. NOT called by ruflo-setup-project.
+#
+# Two bugs handled:
+#   1. agentic-qe depends on better-sqlite3@^12 directly; on Node >= 24 its prebuilt
+#      .node is missing (native:false) → `aqe init` fails at "Initialize persistence
+#      database". We install the native binary into the global agentic-qe first.
+#      (Same root cause as ruflo-patch-native, different package.)
+#   2. Half-init: `.agentic-qe/memory.db` exists but the project marker
+#      `.claude/skills/agentic-quality-engineering` is missing → re-run with --upgrade.
+#
+# Ensure a globally-installed agentic-qe has a native better-sqlite3 (Node >= 24).
+# Same root cause as ruflo-patch-native, different package. Idempotent; no-op on
+# Node <= 22 or when no global agentic-qe is present. Shared by ruflo-setup-aqe and
+# ruflo-resync so an agentic-qe upgrade is one command away from healed.
+_ruflo_aqe_ensure_native() {
+	command -v aqe >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 && command -v node >/dev/null 2>&1 || return 0
+	local aqe_root; aqe_root="$(npm root -g)/agentic-qe"
+	[ -d "$aqe_root" ] || return 0
+	local abi; abi="$(node -e 'process.stdout.write(process.versions.modules)')"
+	[ "${abi:-0}" -ge 137 ] 2>/dev/null || return 0
+	if ! node -e "const b='$aqe_root/node_modules/better-sqlite3';process.exit(require('fs').existsSync(b+'/build/Release/better_sqlite3.node')?0:1)" 2>/dev/null; then
+		echo "Patching native better-sqlite3 into agentic-qe (Node ABI $abi)…"
+		( cd "$aqe_root" && npm install better-sqlite3@^12 --no-save --no-audit --no-fund >/dev/null 2>&1 ) \
+			&& echo "✓ agentic-qe better-sqlite3 is native" \
+			|| echo "⚠  could not patch agentic-qe better-sqlite3 — aqe init may fail"
+	fi
+}
+
+#   ruflo-setup-aqe            # init (or repair) agentic-qe in this repo
+#   ruflo-setup-aqe --force    # force reinitialize (--upgrade)
+ruflo-setup-aqe() {
+	local force=0
+	[ "${1:-}" = "--force" ] && force=1
+
+	_ruflo_aqe_ensure_native
+
+	local AQE
+	if command -v aqe >/dev/null 2>&1; then AQE="aqe"; else AQE="npx -y agentic-qe@latest"; fi
+	local sdk=".agentic-qe/memory.db"
+	local marker=".claude/skills/agentic-quality-engineering"
+
+	if [ "$force" -eq 0 ] && [ -f "$sdk" ] && [ -d "$marker" ]; then
+		echo "✓ agentic-qe already initialized (SDK db + project marker present)"
+		return 0
+	fi
+
+	if [ "$force" -eq 1 ] || { [ -f "$sdk" ] && [ ! -d "$marker" ]; }; then
+		[ -f "$sdk" ] && [ ! -d "$marker" ] && echo "⚠  Detected agentic-qe half-init (SDK db present, marker missing) — repairing…"
+		# shellcheck disable=SC2086
+		$AQE init --auto --upgrade || { echo "⚠  aqe init --upgrade failed"; return 1; }
+	else
+		# shellcheck disable=SC2086
+		$AQE init --auto || { echo "⚠  aqe init failed"; return 1; }
+	fi
+
+	if [ -f "$sdk" ] && [ -d "$marker" ]; then
+		local nskills; nskills="$(ls .claude/skills/ 2>/dev/null | wc -l | tr -d ' ')"
+		echo "✓ agentic-qe initialized (SDK db + marker present, $nskills skills)"
+		# refresh the statusline so the 🎓 segment appears
+		command -v ruflo-fix-statusline-version >/dev/null 2>&1 && ruflo-fix-statusline-version >/dev/null 2>&1
+		return 0
+	fi
+	echo "⚠  agentic-qe not fully initialized — SDK db: $([ -f "$sdk" ] && echo yes || echo no), marker: $([ -d "$marker" ] && echo yes || echo no)"
+	return 1
+}
+
+# ---------------------------------------------------------------------------
+# Run `ruflo neural train` in the CURRENT project and cache the (transient) MicroLoRA
+# Delta Norm so the status-line SONA segment can display Δ<n> LoRA.
+#
+# Why a wrapper: deltaNorm is the magnitude of the LAST adaptation step (see
+# ruvector-training.js JsMicroLoRA._deltaNorm). ruflo computes it at runtime, prints it
+# in the train output, but does NOT persist it — and it cannot be recovered from the
+# lora-checkpoint (which stores the accumulated A/B matrices, not the last step). So we
+# capture it from the command output here and write .claude-flow/neural/lora-delta.json.
+#
+#   ruflo-neural-train                 # = ruflo neural train -p coordination (default)
+#   ruflo-neural-train -p security -e 100   # any `ruflo neural train` args pass through
+ruflo-neural-train() {
+	command -v ruflo >/dev/null 2>&1 || { echo "ruflo not on PATH" >&2; return 2; }
+	local out
+	out="$(ruflo neural train "$@" 2>&1)"
+	printf '%s\n' "$out"
+	local d
+	d="$(printf '%s\n' "$out" | grep -i "MicroLoRA Delta Norm" | grep -oE '[0-9]+\.[0-9]+' | head -1)"
+	if [ -n "$d" ] && [ -d .claude-flow/neural ]; then
+		printf '{"deltaNorm": %s, "ts": %s}\n' "$d" "$(date +%s)" > .claude-flow/neural/lora-delta.json
+		echo "✓ cached Δ LoRA = $d → .claude-flow/neural/lora-delta.json (status line SONA segment will show it)"
+	fi
+}
+
+# ---------------------------------------------------------------------------
+# ONE command to re-apply everything that a ruflo / agentic-qe upgrade wipes.
+# `npm install -g ruflo@latest` (or agentic-qe@latest) re-resolves dependency pins,
+# drops the native better-sqlite3 binaries, and regenerates the statusline — so the
+# self-learning stack goes dormant and the activation footer disappears. Run this
+# from a project root after ANY such upgrade and you are healed in one step:
+#
+#   1. ruflo-enable-learning   → native bsq3 for ruflo's agentdb + assert 5/5 active
+#   2. agentic-qe native repair → native bsq3 for the global agentic-qe (if present)
+#   3. statusline re-patch      → version pin + activation footer for THIS project
+#   4. --aqe (opt-in)           → re-run aqe init --auto --upgrade to refresh QE skills
+#
+#   ruflo-resync           # re-apply learning + statusline (recommended after upgrade)
+#   ruflo-resync --aqe     # also refresh agentic-qe skills in this repo
+ruflo-resync() {
+	local do_aqe=0
+	[ "${1:-}" = "--aqe" ] && do_aqe=1
+
+	echo "## 1/4 self-learning (ruflo agentdb native + assert)"
+	if command -v ruflo-enable-learning >/dev/null 2>&1; then
+		ruflo-enable-learning || echo "⚠  self-learning not fully active — see docs/TROUBLESHOOTING.md"
+	else
+		echo "⚠  ruflo-enable-learning not on PATH (run install.sh)"
+	fi
+
+	echo ""; echo "## 2/4 agentic-qe native better-sqlite3 (if installed)"
+	_ruflo_aqe_ensure_native
+
+	echo ""; echo "## 3/4 statusline (version + activation footer) for this project"
+	ruflo-fix-statusline-version
+
+	if [ "$do_aqe" -eq 1 ]; then
+		echo ""; echo "## 4/4 refresh agentic-qe skills (--aqe)"
+		if [ -f .agentic-qe/memory.db ]; then
+			ruflo-setup-aqe --force
+		else
+			echo "   (no .agentic-qe in this repo — run 'ruflo-setup-aqe' to initialize)"
+		fi
+	fi
+	echo ""; echo "✓ resync complete"
 }
 
 # ---------------------------------------------------------------------------

@@ -102,6 +102,76 @@ ruflo-parity-test --cleanup         # remove the dir on success
 ruflo-parity-test --verbose         # print every CLI call
 ```
 
+## Self-learning dormant (`ruflo neural status` shows "Using sql.js" / HNSW "Not loaded")
+
+The dominant cause is the same missing native better-sqlite3 binary as the memory
+bug. Enable and verify:
+```bash
+ruflo-enable-learning               # patch native bsq3 + assert real capability (5 probes)
+ruflo-learning-verify               # train in a temp dir; assert patterns 0 -> N persist
+```
+`ruflo-enable-learning` re-runs `ruflo-patch-native`, so re-run it after every
+`npm install -g ruflo`. **Simplest after any upgrade:** `ruflo-resync` (one command
+that does enable-learning + agentic-qe native repair + statusline footer; `--aqe`
+also refreshes QE skills).
+
+### Status-line activation footer missing after an upgrade
+`ruflo init` (run by upgrades/`ruflo-setup-project`) regenerates `statusline.cjs`
+without the footer. Re-apply: `ruflo-resync` (or `ruflo-fix-statusline-version`
+directly). The footer is append-only and the patcher is upgrade-safe — it strips any
+stale block and re-injects.
+
+### Status line shows a bare "▊ Agentic QE v3" line (footer hidden after `aqe init`)
+`aqe init` repoints `.claude/settings.json` `statusLine.command` at its own minimal
+`statusline-v3.cjs`, so Claude Code stops rendering the rich `statusline.cjs` (your
+footer is still patched in — just not the file being run). Fix:
+```bash
+ruflo-resync            # or: ruflo-fix-statusline-version
+```
+This re-points `settings.json` so `statusline.cjs` is primary (falling back to
+`statusline-v3.cjs`, then a literal). The status line refreshes within ~5s, or restart
+Claude Code.
+
+### "@ruvector/core not available" persists even after the patch
+This line in `ruflo neural status` is usually **cosmetic**, not real dormancy.
+`getHNSWStatus()` (`memory-initializer.js`) reports "available" only if a lazy
+`_bridge`/`hnswIndex` singleton was initialized *in that process*; the status
+command never triggers it. `@ruvector/core` actually loads and exposes `VectorDb`.
+`ruflo-enable-learning` proves the real capability (it loads core/sona/gnn directly);
+trust its 5/5 over the status display. To confirm the loop end-to-end, run
+`ruflo-learning-verify` (it asserts `.claude-flow/neural/patterns.json` grows).
+
+If `ruflo-enable-learning` itself shows a ruvector probe red (not just the status
+line), it auto-runs a guarded repair (`npm install @ruvector/<pkg>` into
+`@claude-flow/neural`). If a probe is *still* red after that, the native `.node` for
+your arch/ABI may be genuinely missing — fall back to Node 22 LTS.
+
+## `aqe init` fails at "Initialize persistence database" (Node ≥24)
+
+agentic-qe depends on `better-sqlite3@^12` directly and ships without the prebuilt
+`.node` on Node 24/26 (same class of bug as ruflo). `ruflo-setup-aqe` installs the
+native binary into the global `agentic-qe` before initializing:
+```bash
+ruflo-setup-aqe                     # native-bsq3 repair + aqe init --auto + half-init repair
+```
+
+### agentic-qe half-init (SDK db present, skills missing)
+If `.agentic-qe/memory.db` exists but `.claude/skills/agentic-quality-engineering`
+does not, init only half-completed. `ruflo-setup-aqe` detects this and re-runs with
+`--upgrade`. Force a full reinit with `ruflo-setup-aqe --force`.
+
+## Security: `defend` prints a "color" crash / `cve --list` is empty
+
+```bash
+ruflo-security-verify               # verifies scan/defend/secrets + aidefence load
+```
+- `ruflo security defend` **detects** injection correctly (exit 1=threat, 0=clean)
+  but has an upstream cosmetic render crash (`Cannot read properties of undefined
+  (reading 'color')`) *after* the verdict — the exit code is still right, so
+  `ruflo-security-verify` keys off it.
+- `ruflo security cve --list` has **no CVE database** configured. Use `npm audit`
+  for dependency CVEs.
+
 ## Reset a project's ruflo state entirely
 
 ```bash

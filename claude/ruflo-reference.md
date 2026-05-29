@@ -283,6 +283,84 @@ ruflo neural benchmark                           # WASM training perf
 Mostly background — the daemon trains continuously. Manual invocation is for
 forcing training cycles after big behavioral shifts.
 
+**Activate + verify self-learning (machine-ref helpers).** On Node ≥24 the ruvector
+self-learning stack (SONA, HNSW, ReasoningBank) is dormant until the native
+better-sqlite3 binary is in place — the same root cause as the memory bug, and it is
+wiped by every `npm install -g ruflo` upgrade.
+
+```bash
+ruflo-enable-learning            # patch native bsq3 + assert real capability (5 probes)
+ruflo-enable-learning --check    # report activation only, change nothing
+ruflo-learning-verify            # prove the loop: train in a temp dir, patterns 0 -> N
+```
+
+Note: `ruflo neural status` may still print HNSW/Training as "Not loaded" — that is a
+**lazy per-process display** (`getHNSWStatus`), not real dormancy. Trust
+`ruflo-enable-learning`'s capability probes (`@ruvector/core`→`VectorDb`, `sona`,
+`gnn`, agentdb v3) and `ruflo-learning-verify`'s on-disk pattern count instead. Re-run
+`ruflo-enable-learning` after every ruflo upgrade.
+
+### Agentic-QE (opt-in quality-engineering fleet)
+
+`agentic-qe` is a SEPARATE package (`npm i -g agentic-qe`) with its own MCP, 60+ QE
+agents, and a ReasoningBank. On Node ≥24 its `aqe init` fails at persistence-db init
+for the same native-SQLite reason. The machine-ref helper repairs that and handles
+half-init:
+
+```bash
+ruflo-setup-aqe                  # native-bsq3 repair + aqe init --auto + half-init repair
+ruflo-setup-aqe --force          # force reinitialize (aqe init --auto --upgrade)
+```
+
+Opt-in only — `ruflo-setup-project` does NOT run it.
+
+### Security surface (verify + activate)
+
+```bash
+ruflo-security-verify            # verify @claude-flow/security + aidefence load,
+                                 # defend detects injection, scan/secrets run
+ruflo-setup-project --with-security   # run the security pass during project setup
+```
+
+`ruflo security cve --list` has no CVE database configured — use `npm audit` for
+dependency CVEs. `ruflo security defend` detects prompt-injection (exit 1=threat)
+but has an upstream cosmetic render crash after the verdict; the exit code is correct.
+
+### Status-line activation footer
+
+When set up via this kit, a two-line footer is appended **below** ruflo's native
+status-line render (append-only, so it never breaks on a ruflo template change):
+
+```
+🧠 SONA  [●●●●●]  50 patterns · 55 traj · Δ1.32 LoRA · ⚡ HNSW      🛡 aidefence on
+🎓 Agentic QE  🎓 23 patterns · 🧭 114 traj · 🧬 543 vec⚡ · 💾 16MB
+```
+
+Each field renders only when active: SONA `patterns`/`traj` from
+`.claude-flow/neural/stats.json` (the `[bar]` is a ~10-patterns/dot volume gauge),
+`⚡ HNSW` only when `.swarm/hnsw.index` exists, `🛡` when `@claude-flow/aidefence` is
+loaded, and the `🎓 Agentic QE` line (a few guarded `sqlite3` reads of
+`.agentic-qe/memory.db`; `vec` reads `qe_pattern_embeddings`, falling back to
+`vectors`/`embeddings`) only when AQE is initialized. `Δ LoRA` appears only after
+`ruflo-neural-train` (which caches the transient MicroLoRA delta that ruflo itself
+does not persist).
+
+```bash
+ruflo-neural-train               # = ruflo neural train, + caches Δ LoRA for the status line
+ruflo-neural-train -p security -e 100   # any `ruflo neural train` args pass through
+```
+
+### Re-apply after a ruflo / agentic-qe upgrade — one command
+
+`npm install -g ruflo@latest` (or `agentic-qe@latest`) re-resolves pins, drops the
+native better-sqlite3 binaries, and regenerates the statusline — so self-learning goes
+dormant and the footer disappears. Heal it in one step from a project root:
+
+```bash
+ruflo-resync            # enable-learning + agentic-qe native repair + statusline
+ruflo-resync --aqe      # also refresh agentic-qe skills (aqe init --auto --upgrade)
+```
+
 ### Autopilot (persistent task completion)
 
 ```bash
@@ -391,6 +469,10 @@ Need to ... ?
 ├─ Find natural refactor boundaries  → ruflo analyze boundaries src/
 ├─ Coordinate 3+ agents              → native Agent tool first; ruflo swarm only if topology/consensus needed
 ├─ Scan untrusted text               → ruflo security defend -i "..."
+├─ Activate + verify self-learning   → ruflo-enable-learning && ruflo-learning-verify
+├─ Re-apply after a ruflo/aqe upgrade → ruflo-resync   (one command heals everything)
+├─ Verify the security surface       → ruflo-security-verify
+├─ Set up agentic-qe in a repo       → ruflo-setup-aqe   (opt-in)
 └─ Background analysis (long task)   → ruflo hooks worker dispatch -t <type>
 ```
 
