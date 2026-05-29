@@ -436,6 +436,55 @@ ruflo-setup-aqe() {
 }
 
 # ---------------------------------------------------------------------------
+# ONE guided per-project setup. Run from inside a repo. Chains the per-project
+# steps and prints a summary so you always know what's next.
+#
+#   ruflo-onboard                 # setup-project + learning-verify
+#   ruflo-onboard --with-security # also run the security pass in setup-project
+#   ruflo-onboard --aqe           # also initialize agentic-qe in this repo
+ruflo-onboard() {
+	command -v ruflo >/dev/null 2>&1 || { echo "ruflo not on PATH — run install.sh first" >&2; return 2; }
+	local with_security=0 do_aqe=0
+	while [ "$#" -gt 0 ]; do
+		case "$1" in
+			--with-security)   with_security=1 ;;
+			--aqe|--with-aqe)  do_aqe=1 ;;
+			*) echo "ruflo-onboard: unknown flag $1" >&2; return 2 ;;
+		esac
+		shift
+	done
+
+	echo "## ruflo-onboard — $(pwd -P)"
+	echo ""
+	echo "## 1/3 project setup"
+	if [ "$with_security" -eq 1 ]; then
+		ruflo-setup-project --with-security || { echo "⚠  setup-project failed"; return 1; }
+	else
+		ruflo-setup-project || { echo "⚠  setup-project failed"; return 1; }
+	fi
+
+	echo ""; echo "## 2/3 prove self-learning persists"
+	if command -v ruflo-learning-verify >/dev/null 2>&1; then
+		ruflo-learning-verify || echo "⚠  learning-verify reported issues — see docs/TROUBLESHOOTING.md"
+	else
+		echo "⚠  ruflo-learning-verify not on PATH (run install.sh)"
+	fi
+
+	if [ "$do_aqe" -eq 1 ]; then
+		echo ""; echo "## 3/3 agentic-qe"
+		if command -v aqe >/dev/null 2>&1; then
+			ruflo-setup-aqe
+		else
+			echo "⚠  agentic-qe not installed — re-run:  install.sh --with-aqe   (or npm i -g agentic-qe)"
+		fi
+	fi
+
+	echo ""
+	echo "✓ Onboard complete for $(pwd -P)"
+	echo "  After any 'npm i -g ruflo@latest' (or agentic-qe@latest), run: ruflo-resync"
+}
+
+# ---------------------------------------------------------------------------
 # Run `ruflo neural train` in the CURRENT project and cache the (transient) MicroLoRA
 # Delta Norm so the status-line SONA segment can display Δ<n> LoRA.
 #
