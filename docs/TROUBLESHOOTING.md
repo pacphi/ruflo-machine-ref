@@ -172,6 +172,18 @@ ruflo-security-verify               # verifies scan/defend/secrets + aidefence l
 - `ruflo security cve --list` has **no CVE database** configured. Use `npm audit`
   for dependency CVEs.
 
+## `ruflo route stats` stuck at `Update Count 0 / Epsilon 1.0`
+
+The route Q-learner isn't persisting CLI feedback (bug F2: `route feedback` never
+`saveModel()`s and `autoSaveInterval` is 100, so single-update CLI processes exit without
+saving). Fix:
+```bash
+ruflo-patch-route-learning          # sets autoSaveInterval:1; CLI feedback now accumulates
+```
+Re-run after every `npm install -g ruflo` (or just run `ruflo-resync`). Prove the learner
+self-improves with `ruflo-improvement-eval`. Full analysis:
+[docs/upstream/ruflo-self-improvement-findings.md](upstream/ruflo-self-improvement-findings.md).
+
 ## Reset a project's ruflo state entirely
 
 ```bash

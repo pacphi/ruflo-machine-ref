@@ -178,6 +178,19 @@ way to surface it is to **capture it from `ruflo neural train` output and cache 
 which `ruflo-neural-train` does (writing `.claude-flow/neural/lora-delta.json`). The
 footer shows `Δ` only when that cache exists.
 
+### Self-improvement: route-learning persistence (F2) + the LoRA inference gap
+
+A separate investigation asked whether ruflo is *self-improving*, not just self-learning.
+Findings: the route Q-learner never persisted CLI feedback (`route feedback` never
+`saveModel()`s; `autoSaveInterval:100`) — **fixed** by `ruflo-patch-route-learning`
+(`autoSaveInterval:1`); the trained LoRA/SONA is never consumed at inference (no
+`predict`/`forward`; the matrix-LoRA `forward_array` has zero callers) — an upstream gap;
+and the state encoder collapses keyword-distinct tasks. With the fix,
+`ruflo-improvement-eval` proves the route learner self-improves significantly but modestly
+(held-out +16pp vs a no-learning ablation, permutation p=0.004). Full writeup + the
+ready-to-file upstream issue:
+[docs/upstream/ruflo-self-improvement-findings.md](upstream/ruflo-self-improvement-findings.md).
+
 ### Security surface
 
 ruflo ships `@claude-flow/security` (3.0.0-alpha.8) and `@claude-flow/aidefence`

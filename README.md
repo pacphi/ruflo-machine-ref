@@ -97,6 +97,8 @@ ruflo-learning-verify           # prove self-learning actually persists
 | 🧠 `ruflo-enable-learning [--check]` | Activate ruvector self-learning and assert it (5 capability probes). |
 | ✅ `ruflo-learning-verify [--keep]` | Prove the learning loop: train in an isolated dir, assert patterns persist 0 → N on disk. |
 | 🎚️ `ruflo-neural-train [args…]` | Wraps `ruflo neural train` in the current project and caches the MicroLoRA Δ for the status-line SONA segment (ruflo doesn't persist it). Args pass through. |
+| 🔁 `ruflo-patch-route-learning [--check]` | Fix bug F2 so the route Q-learner persists CLI feedback (`autoSaveInterval:1`) — makes route learning actually accumulate from use. Re-run after each ruflo upgrade (in `ruflo-resync`). |
+| 🔬 `ruflo-improvement-eval [--smoke\|--json\|--check]` | Held-out, ablated, multi-seed proof that the route Q-learner self-improves (permutation p + Cohen's d). Writes `.claude-flow/improvement.json`. |
 | 🛡️ `ruflo-security-verify [--quick]` | Verify `@claude-flow/security` + `aidefence` load, injection defense fires, scan/secrets run; flag the CVE-DB gap. |
 | 🎓 `ruflo-setup-aqe [--force]` | **Opt-in.** Fix agentic-qe's native-SQLite bug, then initialize it in a repo (with half-init repair). |
 | 💾 `ruflo-memory-checkpoint [db]` | Force a WAL checkpoint to recover stale memory reads. |
@@ -199,6 +201,24 @@ ruflo-machine-ref/
 ```
 
 ---
+
+## 🧠 Is it learning *and* improving?
+
+ruflo has three learning systems (delivery-company analogy): the **Q-learner** = the
+*dispatcher* (which agent for which task), **SONA** = a driver's *muscle memory*
+(trajectories/patterns), and **LoRA** = the *format* SONA stores tweaks in.
+
+- **Self-learning (banking experience): yes** — the 🧠/🎓 status-line counts grow as ruflo's
+  hooks record your work.
+- **Self-improving (provably getting better): partial, and we made it better.** Two bugs
+  blocked it: the route learner never persisted CLI feedback (**fixed** by
+  `ruflo-patch-route-learning`), and the trained LoRA is never consumed at inference (an
+  **upstream** gap). With the fix, `ruflo-improvement-eval` proves the route learner
+  self-improves — *significantly but modestly* (held-out +16pp over a no-learning ablation,
+  permutation p=0.004). We report what's true and label what isn't.
+
+Full analysis, the three findings, and a ready-to-file upstream issue:
+[docs/upstream/ruflo-self-improvement-findings.md](docs/upstream/ruflo-self-improvement-findings.md).
 
 ## 🗑️ Uninstall
 
