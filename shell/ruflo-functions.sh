@@ -132,17 +132,25 @@ function rufloActivationSegments(cwd){
     var DIM = "[2m", G = "[1;32m", Y = "[1;33m", C = "[1;36m", R = "[0m";
     // execFileSync (no shell) — db path / sql are passed as argv, never interpolated into a command line.
     function q(db, sql){ try { return cp.execFileSync("sqlite3", [db, sql], {stdio:["ignore","pipe","ignore"], timeout:1500}).toString().trim(); } catch(e){ return ""; } }
-    // ── self-learning (SONA) ──
+    function bar(n, max){ n = Math.max(0, Math.min(max, n)); return "[" + "●".repeat(n) + "○".repeat(max - n) + "]"; }
+    function gitBranch(){ try { var h = fs.readFileSync(path.join(cwd, ".git", "HEAD"), "utf8").trim(); var m = h.match(/ref: refs\/heads\/(.+)$/); return m ? m[1] : null; } catch(e){ return null; } }
+    // ── self-learning (SONA): own line with a volume bar + Δ LoRA (cached at train) ──
     var learn = "";
     try {
       var sp = path.join(cwd, ".claude-flow", "neural", "stats.json");
       if (fs.existsSync(sp)) {
         var s = JSON.parse(fs.readFileSync(sp, "utf8"));
         var pn = s.patternsLearned || 0, tj = s.trajectoriesRecorded || 0, parts = [];
-        if (pn > 0) parts.push(pn + " patterns");
-        if (tj > 0) parts.push(tj + " traj");
-        if (fs.existsSync(path.join(cwd, ".swarm", "hnsw.index"))) parts.push(G + "⚡ HNSW" + R);
-        if (parts.length) learn = C + "🧠 SONA" + R + "  " + parts.join(DIM + " · " + R);
+        if (pn > 0 || tj > 0) {
+          if (pn > 0) parts.push(pn + " patterns");
+          if (tj > 0) parts.push(tj + " traj");
+          // Δ LoRA — transient last-step metric, NOT persisted by ruflo and not derivable
+          // from the lora-checkpoint (ruvector-training.js). Cached by ruflo-neural-train.
+          try { var ld = JSON.parse(fs.readFileSync(path.join(cwd, ".claude-flow", "neural", "lora-delta.json"), "utf8")); if (typeof ld.deltaNorm === "number") parts.push(DIM + "Δ" + R + ld.deltaNorm.toFixed(2) + " LoRA"); } catch(e){}
+          if (fs.existsSync(path.join(cwd, ".swarm", "hnsw.index"))) parts.push(G + "⚡ HNSW" + R);
+          var dots = Math.max(0, Math.min(5, Math.round(pn / 10)));   // volume gauge: ~10 patterns per dot
+          learn = C + "🧠 SONA" + R + "  " + DIM + bar(dots, 5) + R + "  " + parts.join(DIM + " · " + R);
+        }
       }
     } catch(e){}
     // ── security (aidefence loaded in the global ruflo install) ──
@@ -151,19 +159,20 @@ function rufloActivationSegments(cwd){
       var ad = path.join(path.dirname(process.execPath), "..", "lib", "node_modules", "ruflo", "node_modules", "@claude-flow", "aidefence", "package.json");
       if (fs.existsSync(ad)) sec = G + "🛡 aidefence on" + R;
     } catch(e){}
-    // ── agentic-qe (one guarded sqlite3 read) ──
+    // ── agentic-qe (one guarded sqlite3 read) — branch + icon-tagged metrics ──
     var qe = "";
     try {
       var db = path.join(cwd, ".agentic-qe", "memory.db");
       if (fs.existsSync(db)) {
         var qp = [];
+        var br = gitBranch(); if (br) qp.push(DIM + "⎇ " + br + R);
         var pat = q(db, "SELECT COUNT(*) FROM qe_patterns");
-        if (pat && Number(pat) > 0) qp.push(pat + " patterns");
+        if (pat && Number(pat) > 0) qp.push("🎓 " + pat + " patterns");
         var qtj = q(db, "SELECT COUNT(*) FROM qe_trajectories");
-        if (qtj && Number(qtj) > 0) qp.push(qtj + " traj");
+        if (qtj && Number(qtj) > 0) qp.push("🧭 " + qtj + " traj");
         var qv = q(db, "SELECT COUNT(*) FROM vectors");
-        if (qv && Number(qv) > 0) qp.push(qv + " vec");
-        try { var kb = Math.round(fs.statSync(db).size / 1024); qp.push(kb >= 1024 ? (kb/1024).toFixed(1) + "MB" : kb + "KB"); } catch(e){}
+        if (qv && Number(qv) > 0) qp.push("🧬 " + qv + " vec" + G + "⚡" + R);
+        try { var kb = Math.round(fs.statSync(db).size / 1024); qp.push("💾 " + (kb >= 1024 ? (kb/1024).toFixed(1) + "MB" : kb + "KB")); } catch(e){}
         qe = Y + "🎓 Agentic QE" + R + "  " + (qp.length ? qp.join(DIM + " · " + R) : "on");
       }
     } catch(e){}
@@ -423,6 +432,31 @@ ruflo-setup-aqe() {
 	fi
 	echo "⚠  agentic-qe not fully initialized — SDK db: $([ -f "$sdk" ] && echo yes || echo no), marker: $([ -d "$marker" ] && echo yes || echo no)"
 	return 1
+}
+
+# ---------------------------------------------------------------------------
+# Run `ruflo neural train` in the CURRENT project and cache the (transient) MicroLoRA
+# Delta Norm so the status-line SONA segment can display Δ<n> LoRA.
+#
+# Why a wrapper: deltaNorm is the magnitude of the LAST adaptation step (see
+# ruvector-training.js JsMicroLoRA._deltaNorm). ruflo computes it at runtime, prints it
+# in the train output, but does NOT persist it — and it cannot be recovered from the
+# lora-checkpoint (which stores the accumulated A/B matrices, not the last step). So we
+# capture it from the command output here and write .claude-flow/neural/lora-delta.json.
+#
+#   ruflo-neural-train                 # = ruflo neural train -p coordination (default)
+#   ruflo-neural-train -p security -e 100   # any `ruflo neural train` args pass through
+ruflo-neural-train() {
+	command -v ruflo >/dev/null 2>&1 || { echo "ruflo not on PATH" >&2; return 2; }
+	local out
+	out="$(ruflo neural train "$@" 2>&1)"
+	printf '%s\n' "$out"
+	local d
+	d="$(printf '%s\n' "$out" | grep -i "MicroLoRA Delta Norm" | grep -oE '[0-9]+\.[0-9]+' | head -1)"
+	if [ -n "$d" ] && [ -d .claude-flow/neural ]; then
+		printf '{"deltaNorm": %s, "ts": %s}\n' "$d" "$(date +%s)" > .claude-flow/neural/lora-delta.json
+		echo "✓ cached Δ LoRA = $d → .claude-flow/neural/lora-delta.json (status line SONA segment will show it)"
+	fi
 }
 
 # ---------------------------------------------------------------------------
