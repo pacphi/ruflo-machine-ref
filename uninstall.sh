@@ -2,43 +2,92 @@
 #
 # uninstall.sh — remove what install.sh placed on this machine.
 #
-# Removes:
-#   every helper this repo ships in bin/ from ~/.local/bin/ (derived from bin/,
-#     so it always matches what install.sh placed — no drift)
-#   ~/.config/ruflo/claude-md-template.md
-#   the BEGIN/END ruflo-reference block from ~/.claude/CLAUDE.md (content
+# By default removes ONLY the kit's own footprint:
+#   - every helper this repo ships in bin/ from ~/.local/bin/ (derived from bin/)
+#   - ~/.config/ruflo/claude-md-template.md
+#   - the BEGIN/END ruflo-reference block from ~/.claude/CLAUDE.md (content
 #     outside the sentinels is preserved)
-#   the source line from ~/.zshrc / ~/.bashrc (this also disables the sourced
-#     shell functions: ruflo-resync, ruflo-setup-project, ruflo-setup-aqe, etc.)
+#   - the source line from ~/.zshrc / ~/.bashrc
 #
-# Leaves your ruflo installation, memory DBs, and project files untouched. Per-project
-# data this kit may have created (.swarm/, .claude-flow/, .agentic-qe/) is intentionally
-# NOT touched — remove that per-project with `ruflo cleanup --force` if you want it gone.
+# Leaves your ruflo install, memory DBs, and project files untouched. Per-project
+# data (.swarm/, .claude-flow/, .agentic-qe/) is intentionally NOT touched —
+# remove that per-project with `ruflo cleanup --force`.
 #
-# With --this-project, ALSO reverts the kit's statusline patches in the current repo's
-# .claude/helpers/statusline.cjs (the activation footer, the console.log wrap, and the
-# version-probe injection) — restoring ruflo's own render. It does NOT delete the
-# statusline or any ruflo/agentic-qe data; run it from the project root.
+# Opt-in machine-wide removal (each prompts to confirm; never runs by default):
+#   --remove-ruflo   npm uninstall -g ruflo
+#   --remove-aqe     npm uninstall -g agentic-qe
+#   --purge          both of the above
 #
-# Usage: ./uninstall.sh [--dry-run] [--this-project]
+# With --this-project, ALSO reverts the kit's statusline patches in the current
+# repo's .claude/helpers/statusline.cjs. Run it from the project root.
+#
+# Behavior:
+#   --yes, -y        skip confirmations (also auto when no TTY)
+#   --dry-run        preview without changing anything
+#   -h, --help
 
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+
+usage() {
+	cat <<'EOF'
+uninstall.sh — remove what install.sh placed on this machine.
+
+Default: removes only the kit footprint (bin helpers, template, CLAUDE.md block,
+rc source line). Your ruflo install, memory DBs, and projects are untouched.
+
+Options:
+  --remove-ruflo   ALSO npm-uninstall global ruflo (machine-wide; confirms)
+  --remove-aqe     ALSO npm-uninstall global agentic-qe (machine-wide; confirms)
+  --purge          --remove-ruflo + --remove-aqe
+  --this-project   ALSO revert this repo's statusline patches (run from repo root)
+  --yes, -y        skip confirmation prompts (also auto when no TTY)
+  --dry-run        preview without changing anything
+  -h, --help
+
+Examples:
+  ./uninstall.sh                 # kit footprint only
+  ./uninstall.sh --this-project  # + revert this repo's statusline
+  ./uninstall.sh --purge         # + remove global ruflo & agentic-qe (asks first)
+EOF
+}
+
 DRY=0
 THIS_PROJECT=0
+REMOVE_RUFLO=0
+REMOVE_AQE=0
+ASSUME_YES=0
 while [ "$#" -gt 0 ]; do
 	case "$1" in
-		--dry-run) DRY=1 ;;
+		--dry-run)      DRY=1 ;;
 		--this-project) THIS_PROJECT=1 ;;
-		-h|--help) sed -n '3,24p' "$0" | sed 's|^# \{0,1\}||'; exit 0 ;;
+		--remove-ruflo) REMOVE_RUFLO=1 ;;
+		--remove-aqe)   REMOVE_AQE=1 ;;
+		--purge)        REMOVE_RUFLO=1; REMOVE_AQE=1 ;;
+		--yes|-y)       ASSUME_YES=1 ;;
+		-h|--help)      usage; exit 0 ;;
 		*) echo "Unknown flag: $1 (try --help)" >&2; exit 2 ;;
 	esac
 	shift
 done
 
-if [ -t 1 ]; then C_OK=$'\033[32m'; C_DIM=$'\033[2m'; C_RESET=$'\033[0m'; else C_OK=""; C_DIM=""; C_RESET=""; fi
-ok()  { printf '%s✓%s %s\n' "$C_OK" "$C_RESET" "$*"; }
-run() { if [ "$DRY" -eq 1 ]; then printf '%s[dry-run]%s %s\n' "$C_DIM" "$C_RESET" "$*"; else eval "$*"; fi; }
+if [ -t 1 ]; then C_OK=$'\033[32m'; C_WARN=$'\033[33m'; C_DIM=$'\033[2m'; C_RESET=$'\033[0m'; else C_OK=""; C_WARN=""; C_DIM=""; C_RESET=""; fi
+ok()   { printf '%s✓%s %s\n' "$C_OK" "$C_RESET" "$*"; }
+warn() { printf '%s⚠%s  %s\n' "$C_WARN" "$C_RESET" "$*"; }
+run()  { if [ "$DRY" -eq 1 ]; then printf '%s[dry-run]%s %s\n' "$C_DIM" "$C_RESET" "$*"; else eval "$*"; fi; }
+
+# ask_yes_no PROMPT DEFAULT(Y|N) -> 0 yes / 1 no. Honors --yes and no-TTY.
+ask_yes_no() {
+	local prompt="$1" def="${2:-Y}" reply hint="[Y/n]"
+	[ "$def" = "N" ] && hint="[y/N]"
+	if [ "$ASSUME_YES" -eq 1 ] || [ ! -t 0 ]; then
+		[ "$def" = "Y" ]; return
+	fi
+	printf '%s %s ' "$prompt" "$hint"
+	read -r reply || reply=""
+	reply="${reply:-$def}"
+	case "$reply" in [Yy]*) return 0 ;; *) return 1 ;; esac
+}
 
 # 1. bin scripts — derived from this repo's bin/, so it always matches install.sh.
 for src in "$HERE"/bin/*; do
@@ -92,12 +141,9 @@ if [ "$THIS_PROJECT" -eq 1 ]; then
 		cp "$SL" "$SL.bak.$(date +%Y%m%d-%H%M%S)"
 		SL="$SL" node -e '
 const fs=require("fs"); const f=process.env.SL; let s=fs.readFileSync(f,"utf8");
-// activation footer (new BEGIN/END block) + the console.log wrap
 s=s.replace(/\/\* ruflo-seg:BEGIN \*\/[\s\S]*?\/\* ruflo-seg:END \*\/\n?/,"");
-// legacy single-function activation marker + its function
 s=s.replace(/\/\* ruflo-machine-ref: activation segments \*\/\s*\nfunction rufloActivationSegments\(cwd\)\{[\s\S]*?\n\}\n/,"");
 s=s.replace(/ \+ rufloActivationSegments\(process\.cwd\(\)\)/g,"");
-// version-probe injection inside the pkgPaths array (restore "const pkgPaths = [")
 s=s.replace(/(const pkgPaths = \[) \/\* ruflo-machine-ref: global-install version probe \*\/ require\("path"\)\.join\([^\n]*?"package\.json"\),/,"$1");
 fs.writeFileSync(f,s);
 ' && ok "reverted statusline patches in $SL (backup saved; ruflo render restored)"
@@ -106,5 +152,23 @@ fs.writeFileSync(f,s);
 	fi
 fi
 
+# 6. (--remove-ruflo / --remove-aqe / --purge) remove global npm packages.
+npm_remove_global() {
+	local pkg="$1"
+	command -v npm >/dev/null 2>&1 || { warn "npm not on PATH — cannot remove $pkg"; return 1; }
+	if [ "$DRY" -eq 1 ]; then printf '%s[dry-run]%s npm uninstall -g %s\n' "$C_DIM" "$C_RESET" "$pkg"; return 0; fi
+	npm uninstall -g "$pkg" >/dev/null 2>&1 && ok "removed global $pkg" || warn "could not remove $pkg (try: sudo npm uninstall -g $pkg)"
+}
+if [ "$REMOVE_RUFLO" -eq 1 ] || [ "$REMOVE_AQE" -eq 1 ]; then
+	echo ""
+	echo "## Remove global npm packages (machine-wide — affects ALL projects)"
+	if [ "$REMOVE_RUFLO" -eq 1 ]; then
+		if [ "$DRY" -eq 1 ] || ask_yes_no "Remove global ruflo for ALL projects on this machine?" N; then npm_remove_global ruflo; else ok "kept ruflo"; fi
+	fi
+	if [ "$REMOVE_AQE" -eq 1 ]; then
+		if [ "$DRY" -eq 1 ] || ask_yes_no "Remove global agentic-qe for ALL projects on this machine?" N; then npm_remove_global agentic-qe; else ok "kept agentic-qe"; fi
+	fi
+fi
+
 echo ""
-ok "Uninstalled. Your ruflo install, memory DBs, and projects are untouched."
+ok "Uninstalled. Your projects are untouched; global ruflo/agentic-qe removed only if you asked."
