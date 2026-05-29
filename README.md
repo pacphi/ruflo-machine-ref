@@ -187,17 +187,17 @@ When set up with this kit, a two-line footer is appended **below** ruflo's own s
 
 ```
 ▊ RuFlo V3.10.5 ● you  │  ⏇ main  │  Opus 4.x        ┐
-🏗️  DDD Domains … 🤖 Swarm … 🔧 Architecture …       ├ ruflo's own lines (unchanged)
-📊 AgentDB …                                          ┘
-────────────────────────────────────────────         ← the kit's appended footer ↓
-🧠 SONA  [●●●●●]  50 patterns · 55 traj · Δ1.32 LoRA · ⚡ HNSW      🛡 aidefence on
-🎓 Agentic QE  🎓 23 patterns · 🧭 114 traj · 🧬 543 vec⚡ · 💾 16MB
+🏗️  DDD Domains … 🤖 Swarm … 🔧 Architecture …       │ ruflo's own lines + the kit's
+📊 AgentDB …                                          │ SONA/aidefence line (all ruflo)
+🧠 SONA  [●●●●●]  50 patterns · 55 traj · Δ1.32 LoRA · ⚡ HNSW      🛡 aidefence on  ┘
+─────────────────────────────────────────────────────  ← divider (matches ruflo's header rule)
+🎓 Agentic QE V3.10.1  🎓 23 patterns · 🧭 114 traj · 🧬 543 vec⚡ · 💾 16MB
 ```
 
 Every field renders only when its data is actually present (numbers above are illustrative):
 - 🧠 **SONA** — `[bar]` is a volume gauge (~10 patterns/dot); `patterns`/`traj` from `.claude-flow/neural/stats.json`; `Δ LoRA` is shown only after you run `ruflo-neural-train` (it caches the transient MicroLoRA delta, which ruflo doesn't persist); `⚡ HNSW` only when a vector index exists.
 - 🛡️ **aidefence on** — proactive prompt-injection/PII defense is loaded (ruflo's native line already shows the `CVE n/m` count, so this signals the *other* half).
-- 🎓 **Agentic QE** — `🎓 patterns` / `🧭 traj` / `🧬 vec` / `💾 size` from a few guarded `sqlite3` reads of `.agentic-qe/memory.db` (the `vec` count comes from `qe_pattern_embeddings`, falling back to `vectors`/`embeddings` across aqe versions). The branch is already in ruflo's header line, so it's not repeated here.
+- 🎓 **Agentic QE** — `V<version>` is the installed `agentic-qe` package version (read from its `package.json`, mirroring `RuFlo V<x>` in ruflo's header); `🎓 patterns` / `🧭 traj` / `🧬 vec` / `💾 size` from a few guarded `sqlite3` reads of `.agentic-qe/memory.db` (the `vec` count comes from `qe_pattern_embeddings`, falling back to `vectors`/`embeddings` across aqe versions). The branch is already in ruflo's header line, so it's not repeated here.
 
 ---
 
