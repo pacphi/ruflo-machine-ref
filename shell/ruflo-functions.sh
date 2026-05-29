@@ -73,6 +73,56 @@ ruflo-remove-mcp() {
 # Usage:
 #   ruflo-setup-project            # --full scaffold + full activation (recommended)
 #   ruflo-setup-project --minimal  # smaller agent/skill footprint (still activated)
+
+# Heal the statusline so it shows the LIVE ruflo version instead of the stale
+# hard-coded '3.6' fallback. Upstream ruflo — through the #2195 "delegation
+# build" shipped in the latest releases (v3.10.5 at time of writing) — still
+# resolves the version from a LOCAL-ONLY package.json probe list that never
+# checks a GLOBAL npm install. So `ruflo init` and `ruflo init upgrade` keep
+# regenerating a statusline.cjs that prints "RuFlo V3.6" even though
+# `ruflo --version` is correct. We patch the freshly generated file:
+#   (a) inject the global node_modules path (derived from the node binary that
+#       runs the statusline) as the FIRST probe candidate — stays live-correct
+#       across future upgrades, and
+#   (b) refresh the hard-coded fallback default to the installed version.
+# Idempotent (guarded by a marker) and re-applied on every setup, so each new
+# ruflo release self-heals. Optional arg 1 overrides the statusline path.
+ruflo-fix-statusline-version() {
+	local sl="${1:-.claude/helpers/statusline.cjs}"
+	[ -f "$sl" ] || sl="$HOME/.claude/helpers/statusline.cjs"
+	if [ ! -f "$sl" ]; then
+		echo "⚠  No statusline.cjs found to patch (skipping version fix)"
+		return 0
+	fi
+	local live_ver
+	live_ver="$(ruflo --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+	if [ -z "$live_ver" ]; then
+		echo "⚠  Could not determine ruflo version (skipping statusline version fix)"
+		return 0
+	fi
+	if ! SL="$sl" LIVE_VER="$live_ver" node -e '
+const fs=require("fs"); const f=process.env.SL; let s=fs.readFileSync(f,"utf8");
+const marker="/* ruflo-machine-ref: global-install version probe */";
+if(!s.includes(marker)){
+  s=s.replace(/const pkgPaths = \[/,
+    `const pkgPaths = [ ${marker} require("path").join(require("path").dirname(process.execPath),"..","lib","node_modules","ruflo","package.json"),`);
+}
+s=s.replace(/(let (?:ver|pkgVersion) = )(["\x27])\d+\.\d+(?:\.\d+)?\2/, `$1$2${process.env.LIVE_VER}$2`);
+fs.writeFileSync(f,s);
+'; then
+		echo "⚠  Statusline version patch failed (left as-is)"
+		return 1
+	fi
+	local shown
+	shown="$(printf '{}' | node "$sl" 2>/dev/null | sed -E 's/\x1b\[[0-9;]*m//g' \
+		| grep -oE 'RuFlo V[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1 | sed 's/RuFlo V//')"
+	if [ "$shown" = "$live_ver" ]; then
+		echo "✓ Statusline version pinned to ruflo v$live_ver"
+	else
+		echo "⚠  Statusline shows V${shown:-?} but ruflo is v$live_ver — review $sl"
+	fi
+}
+
 ruflo-setup-project() {
 	local extra_args
 	if [ "$#" -gt 0 ]; then extra_args="$*"; else extra_args="--full"; fi
@@ -83,6 +133,10 @@ ruflo-setup-project() {
 	if command -v ruflo-patch-native >/dev/null 2>&1; then
 		ruflo-patch-native >/dev/null 2>&1 || true
 	fi
+
+	# Heal the statusline version that `ruflo init` just regenerated (upstream
+	# still hard-codes a '3.6' fallback and never finds a global install).
+	ruflo-fix-statusline-version
 
 	# No committed MCP pollution; no leftover local-scope MCP registration.
 	rm -f .mcp.json
