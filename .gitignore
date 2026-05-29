@@ -30,6 +30,5 @@ test-*.log
 CLAUDE.md.backup
 CLAUDE.md.pre-ruflo
 CLAUDE.md.pre-ruflo.*
-# NOTE: project-local CLAUDE.md is intentionally NOT ignored here — see the open decision
-# in docs/upstream/ruflo-self-improvement-findings.md / PR discussion (commit a curated
-# AQE-instructions CLAUDE.md vs. fold AQE guidance into the global template).
+# NOTE: project-local CLAUDE.md IS tracked — but kept scrubbed of global-duplicated content
+# (project-specific notes only; the machine-wide reference lives in ~/.claude/CLAUDE.md).
