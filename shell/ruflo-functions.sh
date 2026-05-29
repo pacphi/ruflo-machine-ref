@@ -133,7 +133,6 @@ function rufloActivationSegments(cwd){
     // execFileSync (no shell) — db path / sql are passed as argv, never interpolated into a command line.
     function q(db, sql){ try { return cp.execFileSync("sqlite3", [db, sql], {stdio:["ignore","pipe","ignore"], timeout:1500}).toString().trim(); } catch(e){ return ""; } }
     function bar(n, max){ n = Math.max(0, Math.min(max, n)); return "[" + "●".repeat(n) + "○".repeat(max - n) + "]"; }
-    function gitBranch(){ try { var h = fs.readFileSync(path.join(cwd, ".git", "HEAD"), "utf8").trim(); var m = h.match(/ref: refs\/heads\/(.+)$/); return m ? m[1] : null; } catch(e){ return null; } }
     // ── self-learning (SONA): own line with a volume bar + Δ LoRA (cached at train) ──
     var learn = "";
     try {
@@ -165,7 +164,6 @@ function rufloActivationSegments(cwd){
       var db = path.join(cwd, ".agentic-qe", "memory.db");
       if (fs.existsSync(db)) {
         var qp = [];
-        var br = gitBranch(); if (br) qp.push(DIM + "⎇ " + br + R);
         var pat = q(db, "SELECT COUNT(*) FROM qe_patterns");
         if (pat && Number(pat) > 0) qp.push("🎓 " + pat + " patterns");
         var qtj = q(db, "SELECT COUNT(*) FROM qe_trajectories");

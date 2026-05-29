@@ -221,8 +221,15 @@ upgrade ruflo ──► binaries present, bsq3 .node MISSING ──► agentdb=W
 
 - **R16.** The generated `statusline.cjs` MUST append a self-learning line when SONA is
   active, showing real counts read from `.claude-flow/neural/stats.json`
-  (`🧠 SONA <patterns> · <traj>`), plus an `⚡ HNSW` marker only when a vector index
-  (`.swarm/hnsw.index`) exists. Omitted entirely when no learning has occurred.
+  (`🧠 SONA [bar] <patterns> · <traj>`), a `[bar]` volume gauge (~10 patterns/dot), an
+  `⚡ HNSW` marker only when a vector index (`.swarm/hnsw.index`) exists, and a
+  `Δ<n> LoRA` field only when `.claude-flow/neural/lora-delta.json` exists. Omitted
+  entirely when no learning has occurred. The agentic-qe line MUST be icon-tagged
+  (`🎓 patterns · 🧭 traj · 🧬 vec⚡ · 💾 size`). It MUST NOT repeat the git branch —
+  ruflo's native header line already shows it.
+- **R16a.** `Δ LoRA` is a transient last-step metric ruflo neither persists nor exposes
+  via a file (verified in `ruvector-training.js`), so a `ruflo-neural-train` wrapper MUST
+  capture it from `ruflo neural train` output and cache it for the footer to read.
 - **R17.** It MUST append a security segment (`🛡 aidefence on`) when
   `@claude-flow/aidefence` is loaded, and a separate agentic-qe line
   (`🎓 Agentic QE <patterns>[· traj][· vec] · <size>`, one guarded `sqlite3` read of

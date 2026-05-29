@@ -158,6 +158,24 @@ ships without the prebuilt `.node` → `native:false`. `ruflo-setup-aqe` install
 native binary into the global `agentic-qe` before running `aqe init`. The gist did
 not cover this (it assumed `aqe init` just works).
 
+### The status-line footer, and the `Δ LoRA` source finding
+
+The kit appends a two-line footer **below** ruflo's native status line (never rewriting
+ruflo's lines — chosen over the gist's in-place relabel for upgrade-safety). Most fields
+are cheap reads: SONA `patterns`/`traj` from `.claude-flow/neural/stats.json`, the
+agentic-qe metrics from one guarded `sqlite3` read of `.agentic-qe/memory.db`.
+
+One field — `Δ LoRA` (the MicroLoRA delta norm Ciprian's status line shows) — required
+digging into ruflo source. In `@claude-flow/cli/.../services/ruvector-training.js`,
+`JsMicroLoRA._deltaNorm` is computed as `sqrt(Σ delta²)` over the **last adaptation
+step only** (`adapt_array`/`adapt_with_reward`), and is partly stochastic
+(`adapt_with_reward` uses `Math.random()`). It is **not persisted** to `stats.json`, and
+it **cannot be recovered** from the `lora-checkpoint-*.json` (which stores the
+accumulated `{A, B, scaling}` matrices, not the last step's delta). So the only faithful
+way to surface it is to **capture it from `ruflo neural train` output and cache it** —
+which `ruflo-neural-train` does (writing `.claude-flow/neural/lora-delta.json`). The
+footer shows `Δ` only when that cache exists.
+
 ### Security surface
 
 ruflo ships `@claude-flow/security` (3.0.0-alpha.8) and `@claude-flow/aidefence`

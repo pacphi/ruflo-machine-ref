@@ -96,6 +96,7 @@ ruflo-learning-verify           # prove self-learning actually persists
 | 🩹 `ruflo-patch-native [--check]` | Make ruflo's agentdb use native `better-sqlite3` on Node ≥24. |
 | 🧠 `ruflo-enable-learning [--check]` | Activate ruvector self-learning and assert it (5 capability probes). |
 | ✅ `ruflo-learning-verify [--keep]` | Prove the learning loop: train in an isolated dir, assert patterns persist 0 → N on disk. |
+| 🎚️ `ruflo-neural-train [args…]` | Wraps `ruflo neural train` in the current project and caches the MicroLoRA Δ for the status-line SONA segment (ruflo doesn't persist it). Args pass through. |
 | 🛡️ `ruflo-security-verify [--quick]` | Verify `@claude-flow/security` + `aidefence` load, injection defense fires, scan/secrets run; flag the CVE-DB gap. |
 | 🎓 `ruflo-setup-aqe [--force]` | **Opt-in.** Fix agentic-qe's native-SQLite bug, then initialize it in a repo (with half-init repair). |
 | 💾 `ruflo-memory-checkpoint [db]` | Force a WAL checkpoint to recover stale memory reads. |
@@ -115,11 +116,13 @@ When set up with this kit, a two-line footer is appended **below** ruflo's own s
 🏗️  DDD Domains … 🤖 Swarm … 🔧 Architecture …       ├ ruflo's own lines (unchanged)
 📊 AgentDB …                                          ┘
 ────────────────────────────────────────────         ← the kit's appended footer ↓
-🧠 SONA  50 patterns · 55 traj · ⚡ HNSW        🛡 aidefence on
-🎓 Agentic QE  23 patterns · 16MB
+🧠 SONA  [●●●●●]  50 patterns · 55 traj · Δ1.32 LoRA · ⚡ HNSW      🛡 aidefence on
+🎓 Agentic QE  🎓 23 patterns · 🧭 114 traj · 🧬 543 vec⚡ · 💾 16MB
 ```
 
-*(The `⚡ HNSW` marker and the `🎓 Agentic QE` line appear only when a vector index / agentic-qe are actually present; the numbers above are illustrative.)*
+Every field renders only when its data is actually present (numbers above are illustrative):
+- 🧠 **SONA** — `[bar]` is a volume gauge (~10 patterns/dot); `patterns`/`traj` from `.claude-flow/neural/stats.json`; `Δ LoRA` is shown only after you run `ruflo-neural-train` (it caches the transient MicroLoRA delta, which ruflo doesn't persist); `⚡ HNSW` only when a vector index exists.
+- 🎓 **Agentic QE** — `🎓 patterns` / `🧭 traj` / `🧬 vec` / `💾 size` from `.agentic-qe/memory.db` (the branch is already in ruflo's header line, so it's not repeated here).
 
 - 🧠 **SONA** — pattern & trajectory counts from `.claude-flow/neural/stats.json`; `⚡ HNSW` shows only when a vector index exists.
 - 🛡️ **aidefence on** — proactive prompt-injection/PII defense is loaded (ruflo's native line already shows the `CVE n/m` count, so this signals the *other* half).

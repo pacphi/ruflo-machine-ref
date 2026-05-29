@@ -332,14 +332,22 @@ When set up via this kit, a two-line footer is appended **below** ruflo's native
 status-line render (append-only, so it never breaks on a ruflo template change):
 
 ```
-🧠 SONA  50 patterns · 55 traj · ⚡ HNSW        🛡 aidefence on
-🎓 Agentic QE  23 patterns · 16MB
+🧠 SONA  [●●●●●]  50 patterns · 55 traj · Δ1.32 LoRA · ⚡ HNSW      🛡 aidefence on
+🎓 Agentic QE  🎓 23 patterns · 🧭 114 traj · 🧬 543 vec⚡ · 💾 16MB
 ```
 
-Each segment renders only when its feature is genuinely active: SONA counts come from
-`.claude-flow/neural/stats.json`, `⚡ HNSW` shows only when `.swarm/hnsw.index` exists,
-`🛡` shows when `@claude-flow/aidefence` is loaded, and the `🎓 Agentic QE` line (one
-guarded `sqlite3` read of `.agentic-qe/memory.db`) shows only when AQE is initialized.
+Each field renders only when active: SONA `patterns`/`traj` from
+`.claude-flow/neural/stats.json` (the `[bar]` is a ~10-patterns/dot volume gauge),
+`⚡ HNSW` only when `.swarm/hnsw.index` exists, `🛡` when `@claude-flow/aidefence` is
+loaded, and the `🎓 Agentic QE` line (one guarded `sqlite3` read of
+`.agentic-qe/memory.db`) only when AQE is initialized. `Δ LoRA` appears only after
+`ruflo-neural-train` (which caches the transient MicroLoRA delta that ruflo itself
+does not persist).
+
+```bash
+ruflo-neural-train               # = ruflo neural train, + caches Δ LoRA for the status line
+ruflo-neural-train -p security -e 100   # any `ruflo neural train` args pass through
+```
 
 ### Re-apply after a ruflo / agentic-qe upgrade — one command
 
