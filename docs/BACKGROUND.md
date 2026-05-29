@@ -108,6 +108,15 @@ All of the above are filed/summarized in
 A follow-up question — "is the ruvector self-learning stack actually *on*?" — led
 to a second round of diagnosis on ruflo **3.10.5** / Node **26**. Findings:
 
+> **Prior art / credit.** This round built on a project-scoped setup-and-repair kit
+> by Ciprian Melian:
+> <https://gist.github.com/ciprianmelian/eb7e8ff7d24018141ca34bb8a7e216a6>, which
+> wires ruflo together with the standalone **agentic-qe** fleet
+> (<https://github.com/proffesor-for-testing/agentic-qe>). The analysis below
+> documents where that gist's fixes are now redundant (already upstream in 3.10.5)
+> versus still needed (the native-SQLite binary, and the previously-undocumented
+> agentic-qe variant of the same bug).
+
 ### The gist's controller-registry patches are already upstream
 
 A colleague's project-scoped kit (written against ruflo ~3.6) patched

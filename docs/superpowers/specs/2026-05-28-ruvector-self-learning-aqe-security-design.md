@@ -13,9 +13,12 @@ yet enable or verify ruflo's **self-learning** stack (ruvector: SONA, ReasoningB
 HNSW, GNN), it does not integrate the separately-installed `agentic-qe`, and it
 treats ruflo's built-in **security** surface as undocumented and unverified.
 
-A colleague's gist (project-scoped, written against ruflo ~3.6) documents a 5-script
-kit that patches `controller-registry.js`, integrates agentic-qe, and verifies
-ruvector binaries. This design absorbs the *still-relevant* ideas from that gist
+A colleague's gist by Ciprian Melian
+(<https://gist.github.com/ciprianmelian/eb7e8ff7d24018141ca34bb8a7e216a6>,
+project-scoped, written against ruflo ~3.6) documents a 5-script kit that patches
+`controller-registry.js`, integrates agentic-qe
+(<https://github.com/proffesor-for-testing/agentic-qe>), and verifies ruvector
+binaries. This design absorbs the *still-relevant* ideas from that gist
 into this kit's **global-install-once** philosophy, while explicitly rejecting the
 parts that are now obsolete.
 
