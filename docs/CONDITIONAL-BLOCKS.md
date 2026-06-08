@@ -71,11 +71,23 @@ Because the gate logic is the same for every block, it lives in **one place** an
 # <slug> | <source file in claude/> | <staged template in ~/.config/ruflo/> | <detector>
 _ruflo_cond_blocks() {
 	cat <<'EOF'
+ruflo-preamble|ruflo-preamble.md|preamble-md-template.md|true
 ruflo-aqe-reference|aqe-reference.md|aqe-md-template.md|have aqe
 ruflo-superpowers-reference|superpowers-reference.md|superpowers-md-template.md|have_superpowers
 EOF
 }
 ```
+
+> **Always-on blocks.** A detector of `true` (always exit 0) makes a block unconditional —
+> it's *always* present, the same machinery just never strips it. `ruflo-preamble` is the
+> one: the machine-wide operating-rules preamble (H1, Operating rules, agent-coordination,
+> task routing, the analysis/reporting conventions). It lives in the repo so it survives
+> onboarding and `ruflo-reference-refresh` instead of sitting as unmanaged text above the
+> sentinels (where a regenerate would lose it). The sync loop special-cases this one slug to
+> **lead the file** (prepend, not append) and to run a one-time `_ruflo_strip_legacy_preamble`
+> migration that removes any pre-sentinel preamble shipped by older kit versions — bounded so
+> the `# Ruflo Integration` block (written by `ruflo init`) and every managed block are left
+> untouched.
 
 Each field maps to the three things a block *is*:
 

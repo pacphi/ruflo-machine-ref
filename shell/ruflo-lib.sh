@@ -139,6 +139,42 @@ _ruflo_block_strip() {
 	cat "$new" > "$file"; rm -f "$new"
 }
 
+# _ruflo_block_prepend FILE SRC — insert SRC (which carries its own BEGIN/END markers)
+# at the very TOP of FILE; create FILE from SRC if missing. Unlike _ruflo_block_upsert
+# (which appends when the marker is absent), this is for an always-on block that must
+# lead the file. Returns 1 if SRC is unreadable.
+_ruflo_block_prepend() {
+	local file="$1" src="$2" new
+	[ -f "$src" ] || return 1
+	mkdir -p "$(dirname "$file")" 2>/dev/null
+	new=$(mktemp)
+	if [ -f "$file" ]; then { cat "$src"; printf '\n'; cat "$file"; } > "$new"; else cat "$src" > "$new"; fi
+	cat "$new" > "$file"; rm -f "$new"
+}
+
+# _ruflo_strip_legacy_preamble FILE — one-time migration. Early kit versions shipped the
+# operating-rules preamble (H1 "# Machine-wide Claude Code Reference" + Operating rules +
+# coordination + routing …) as UNMANAGED text above the sentinel blocks. It now lives in
+# the managed `ruflo-preamble` block. Drop that legacy leading region so it isn't
+# duplicated. Surgically bounded: removes only from the top down to the first foreign
+# marker — the `# Ruflo Integration` block written by `ruflo init`, or the first
+# `<!-- BEGIN ruflo-` managed block — so neither is touched. Guards: no-op unless the
+# file literally starts with the kit H1 (genuine user notes with a different title are
+# safe) and the file isn't already migrated (idempotent).
+_ruflo_strip_legacy_preamble() {
+	local file="$1" new
+	[ -f "$file" ] || return 0
+	grep -qF '<!-- BEGIN ruflo-preamble -->' "$file" && return 0
+	head -1 "$file" 2>/dev/null | grep -qF '# Machine-wide Claude Code Reference' || return 0
+	new=$(mktemp)
+	awk '
+		BEGIN{drop=1}
+		drop && (/^# Ruflo Integration \(auto-generated/ || /^<!-- BEGIN ruflo-/){drop=0}
+		!drop{print}
+	' "$file" > "$new"
+	cat "$new" > "$file"; rm -f "$new"
+}
+
 # --- conditional-block registry --------------------------------------------
 # Some CLAUDE.md sub-blocks belong in ~/.claude/CLAUDE.md only when a companion
 # tool is installed (the agentic-qe fleet, the superpowers plugin, …). Rather than
@@ -152,8 +188,13 @@ _ruflo_block_strip() {
 #   <slug> | <source file in claude/> | <staged template in ~/.config/ruflo/> | <detector>
 # - <slug>     doubles as the sentinel name: <!-- BEGIN <slug> --> … <!-- END <slug> -->
 # - <detector> is any command; exit 0 means "tool present → include the block".
+# An ALWAYS-ON block uses the detector `true` (always exit 0). `ruflo-preamble` is one:
+# the machine-wide operating-rules preamble, owned by the repo so it survives onboarding
+# and `ruflo-reference-refresh`. The sync loop below special-cases it to lead the file
+# (prepend, not append) and to supersede any legacy unmanaged preamble.
 _ruflo_cond_blocks() {
 	cat <<'EOF'
+ruflo-preamble|ruflo-preamble.md|preamble-md-template.md|true
 ruflo-aqe-reference|aqe-reference.md|aqe-md-template.md|have aqe
 ruflo-superpowers-reference|superpowers-reference.md|superpowers-md-template.md|have_superpowers
 EOF
@@ -181,7 +222,17 @@ _ruflo_sync_cond_blocks() {
 		b="<!-- BEGIN $slug -->"; e="<!-- END $slug -->"
 		if eval "$detector" >/dev/null 2>&1; then
 			[ -f "$cfg/$tmpl" ] || continue
-			grep -qF "$b" "$ref" 2>/dev/null || echo "  + $slug → tool present, adding block"
+			if ! grep -qF "$b" "$ref" 2>/dev/null; then
+				if [ "$slug" = "ruflo-preamble" ]; then
+					# always-on operating-rules preamble: lead the file and supersede
+					# any legacy unmanaged preamble — migrate-then-prepend, don't append.
+					_ruflo_strip_legacy_preamble "$ref"
+					_ruflo_block_prepend "$ref" "$cfg/$tmpl"
+					echo "  + $slug → added (top of file)"
+					continue
+				fi
+				echo "  + $slug → tool present, adding block"
+			fi
 			_ruflo_block_upsert "$ref" "$b" "$e" "$cfg/$tmpl"
 		elif grep -qF "$b" "$ref" 2>/dev/null; then
 			echo "  - $slug → tool absent, stripping stale block"
