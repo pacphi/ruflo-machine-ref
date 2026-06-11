@@ -15,8 +15,7 @@ security). Two surfaces, same functionality:
 **Full reference** (every subcommand, flags, the Node/WASM gotchas, statusline internals):
 read `~/.config/ruflo/ruflo-reference-full.md` on demand, or run `ruflo <cmd> --help`.
 This compact block is auto-loaded each session; the full doc is read only when needed
-(it was a ~5.6K-token/session tax — see
-docs/usage/token-consumption-findings-and-mitigation-2026-06.md).
+(keeping the always-on per-session context small).
 
 ### When NOT to use ruflo
 
@@ -58,6 +57,6 @@ The background daemon is **opt-in** — `ruflo-setup-project` does NOT start one
 yourself only for a project you're actively working (`ruflo daemon start`); it is
 TTL-reaped (12h) and auto-reaped on shell start. Inspect/stop strays with
 `ruflo-daemon-gc [--kill]`. A leak shows as `⚙ N ruflo daemons` (yellow at ≥3) in the
-statusline. Background: docs/usage/token-consumption-findings-and-mitigation-2026-06.md.
+statusline.
 
 <!-- END ruflo-reference -->

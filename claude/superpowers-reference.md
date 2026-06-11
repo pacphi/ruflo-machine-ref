@@ -1,8 +1,8 @@
 <!-- BEGIN ruflo-superpowers-reference -->
 <!-- ruflo-superpowers-reference: merged into ~/.claude/CLAUDE.md ONLY when the superpowers
      plugin is installed. Managed by install.sh / ruflo-reference-refresh — stripped
-     automatically when superpowers is absent. Source of truth: claude/superpowers-reference.md
-     in the ruflo-machine-ref kit. See docs/CONDITIONAL-BLOCKS.md for the why. -->
+     automatically when superpowers is absent. Source of truth: the superpowers-reference
+     block in the ruflo-machine-ref kit (see its docs/ for the conditional-block design). -->
 
 ## Superpowers + ruflo — house rules (coordination)
 

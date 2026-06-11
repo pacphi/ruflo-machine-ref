@@ -1,8 +1,7 @@
 # Ruflo CLI Reference (full, on-demand)
 
 > This is the complete ruflo reference. It is intentionally NOT auto-loaded into
-> every session (that was a ~5.6K-token-per-session context tax — see
-> docs/usage/token-consumption-findings-and-mitigation-2026-06.md). The global
+> every session (that was a ~5.6K-token-per-session context tax). The global
 > `~/.claude/CLAUDE.md` carries only a compact pointer; read this file on demand.
 > Deployed copy: `~/.config/ruflo/ruflo-reference-full.md`.
 
