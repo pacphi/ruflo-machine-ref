@@ -148,6 +148,13 @@ Try `./install.sh --dry-run` first to preview exactly what it will do.
 | 📇 `ruflo-setup-machine` | One-time: register ruflo MCP at **user** scope (all projects). Optional. |
 | 🔍 `ruflo-parity-test [--cleanup]` | 20-check end-to-end memory smoke test in an isolated `/tmp` dir. |
 | 📝 `ruflo-reference-refresh [--diff\|--regenerate]` | Inspect/rebuild the machine-wide CLAUDE.md ruflo block from the template. |
+| 📊 `ruflo-token-audit [--days N] [--json]` | **Where did my tokens go?** Audits local Claude Code transcripts across N days (default 7): tokens by day/model/project, sessions/day, per-session startup tax, and a cross-reference of running `ruflo` daemons against your top-burn projects. Use when usage spikes unexpectedly. |
+
+> 💡 **Token-audit skill.** The kit also installs a user-scope Claude skill,
+> `ruflo-token-audit`, available in every project. Just ask Claude in plain language —
+> e.g. *"Audit my Claude Code token usage for the last 7 days — what's burning my
+> tokens?"* — and it runs the audit, checks for runaway daemons, and recommends fixes.
+> Background: [docs/usage/token-consumption-findings-and-mitigation-2026-06.md](docs/usage/token-consumption-findings-and-mitigation-2026-06.md).
 
 ---
 

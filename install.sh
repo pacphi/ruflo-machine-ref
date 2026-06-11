@@ -203,6 +203,26 @@ done
 ok "templates installed (ruflo-reference + $(_ruflo_cond_blocks | grep -c .) conditional blocks)"
 echo ""
 
+# User-scope Claude Code skills: deploy every claude/skills/<name>/ to ~/.claude/skills/
+# so they are /-invocable in EVERY project. Loop-driven — dropping a new skill dir into
+# claude/skills/ auto-deploys it (and uninstall.sh removes it the same way).
+SKILLS_SRC="$HERE/claude/skills"
+SKILLS_DST="$HOME/.claude/skills"
+if [ -d "$SKILLS_SRC" ]; then
+	echo "## Claude skills -> $SKILLS_DST/"
+	_skill_n=0
+	for _sk in "$SKILLS_SRC"/*/; do
+		[ -d "$_sk" ] || continue
+		_name="$(basename "$_sk")"
+		run "mkdir -p '$SKILLS_DST/$_name'"
+		run "cp -R '$_sk.' '$SKILLS_DST/$_name/'"
+		ok "$_name"
+		_skill_n=$((_skill_n + 1))
+	done
+	[ "$_skill_n" -eq 0 ] && ok "(no skills to install)"
+	echo ""
+fi
+
 # Shared helper lib — deployed to a stable absolute path so the standalone bin
 # scripts (which run from ~/.local/bin, no repo nearby) can source it.
 echo "## shared helper lib -> $CFG_DIR/ruflo-lib.sh"

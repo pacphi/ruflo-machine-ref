@@ -94,8 +94,21 @@ _ruflo_cond_blocks | while IFS='|' read -r _slug _src _tmpl _detector; do
 	[ -f "$HOME/.config/ruflo/$_tmpl" ] && { run "rm -f '$HOME/.config/ruflo/$_tmpl'"; ok "removed $_slug template"; }
 done
 
+# 2a. full on-demand ruflo reference (deployed alongside the compact template)
+[ -f "$HOME/.config/ruflo/ruflo-reference-full.md" ] && { run "rm -f '$HOME/.config/ruflo/ruflo-reference-full.md'"; ok "removed full reference"; }
+
 # 2b. shared helper lib (already sourced at the top, so removing it here is safe)
 [ -f "$HOME/.config/ruflo/ruflo-lib.sh" ] && { run "rm -f '$HOME/.config/ruflo/ruflo-lib.sh'"; ok "removed helper lib"; }
+
+# 2c. user-scope Claude skills — derived from this repo's claude/skills/, matching install.sh.
+if [ -d "$HERE/claude/skills" ]; then
+	for _sk in "$HERE"/claude/skills/*/; do
+		[ -d "$_sk" ] || continue
+		_name="$(basename "$_sk")"
+		_dst="$HOME/.claude/skills/$_name"
+		[ -d "$_dst" ] && { run "rm -rf '$_dst'"; ok "removed skill $_name"; }
+	done
+fi
 
 # 3. CLAUDE.md managed blocks: the ruflo-reference base + every conditional block (registry-driven,
 #    so any block added to ruflo-lib.sh is cleaned here too). Content outside the sentinels is preserved.

@@ -19,7 +19,8 @@ Killed them, reaped 10 orphaned MCP servers, and changed the kit's daemon policy
 | **Why invisible** | `ruflo daemon status` only checks the *current* workspace; the six were for *other* workspaces |
 | **Fix** | Daemon now **opt-in**; `ruflo-daemon-gc` reaps by **TTL (12h)/orphan**; auto-reaper on shell start; `⚙ N daemons` statusline alarm |
 | **Immediate cleanup** | 6 daemons killed + 10 orphaned `beads-mcp` servers reaped (~175 MB) |
-| **Still open** | 87% of tokens were cache-reads of an oversized fixed per-session context (global `CLAUDE.md` + superpowers preamble) — next optimization |
+| **2nd optimization** | Compacted the auto-loaded `ruflo-reference` block: global `CLAUDE.md` 728→294 lines, ~8,628→~3,889 tokens (**-55%/session**); full reference moved on-demand |
+| **Tooling shipped** | `ruflo-token-audit` CLI + user-scope Claude skill so anyone can self-diagnose a recurrence |
 
 ---
 
@@ -206,6 +207,52 @@ total tokens to drop sharply now that the daemons are gone and the per-session b
 
 ---
 
+## Tooling shipped — self-service token audit
+
+So anyone can diagnose a recurrence (or any automation leak) without re-deriving the
+method, the ad-hoc `/tmp` scripts were consolidated into a maintained tool + skill.
+
+**`bin/ruflo-token-audit`** (deployed to `~/.local/bin`, stdlib-only Python, no network):
+```bash
+ruflo-token-audit                 # last 7 days, human report
+ruflo-token-audit --days 14       # widen the window
+ruflo-token-audit --json          # machine-readable (dashboards/CI)
+ruflo-token-audit --top 20        # more projects
+ruflo-token-audit --no-daemons    # skip the `ps` daemon cross-reference
+```
+Emits: total + cost-weighted (Opus-equivalent reference, **not** plan billing) tokens;
+by-day / by-model / by-project; sessions/day; per-session startup context tax; session-size
+distribution; and a **daemon cross-reference** that flags running `ruflo daemon start`
+processes whose workspace is a top-burn project.
+
+**`ruflo-token-audit` skill** (user-scope, deployed to `~/.claude/skills/`, `/`-invocable
+in every project): runs the engine, interprets interactive-vs-automation signals, checks
+the daemon cross-reference, and returns a ranked diagnosis with exact fix commands.
+
+**Sample prompts**
+- *"Audit my Claude Code token usage for the last 7 days — what's burning my tokens?"*
+- *"I'm hitting my Max limit in a day. Run the token audit and tell me why."*
+- *"Check for runaway ruflo daemons and show me my heaviest projects this week."*
+
+**Kit wiring:** `install.sh` now also deploys every `claude/skills/<name>/` to
+`~/.claude/skills/` (loop-driven — new skills auto-deploy); `uninstall.sh` removes them
+plus the on-demand full reference. `bin/ruflo-token-audit` rides the existing `bin/*`
+deploy loop (no extra wiring).
+
+---
+
+## Commit log (this work, branch `main`)
+
+| Commit | Summary |
+|---|---|
+| `b168454` | Daemon opt-in + TTL/idle reaper + shell-start auto-reaper + `⚙` statusline alarm; this findings doc |
+| `c48b708` | Compact `ruflo-reference` block (full reference moved to on-demand `~/.config/ruflo/ruflo-reference-full.md`) |
+| `ede698a` | Doc: mark the context-tax optimization complete |
+| `cb11189` | Remove repo-relative `docs/` references from home-assembled CLAUDE.md content (repo-independent after install) |
+| _(this change)_ | `ruflo-token-audit` CLI + skill; install/uninstall skill wiring; README + this doc |
+
+---
+
 ## Session transcript
 
 Verbatim user prompts; assistant turns summarized with the actions/data that mattered.
@@ -259,3 +306,23 @@ then executed the global `CLAUDE.md` context-tax optimization — compacted the
 `ruflo-reference` block from ~5.6K to ~0.8K tokens (full reference preserved on-demand),
 cutting the live global CLAUDE.md by 55% (~4,740 tokens/session), committed and pushed
 (`c48b708`).
+
+**User:** "these files you updated reference this repo's docs directory. Assume … the user
+… move or destroy the repo … not constructive to ref such files in the assembled
+~/.claude/CLAUDE.md."
+
+**Assistant:** Removed all repo-relative `docs/` pointers from content assembled into the
+user's home (`ruflo-reference.md`, `ruflo-reference-full.md`, `superpowers-reference.md`),
+made the rationale self-contained, redeployed, and verified zero `docs/` refs remain in
+`~/.claude/CLAUDE.md` or `~/.config/ruflo/*.md` — the home config is now repo-independent
+(`cb11189`). Left the pre-existing transient `docs/TROUBLESHOOTING.md` stderr hints in
+`shell/ruflo-functions.sh` as out-of-scope.
+
+**User:** "The /tmp py scripts … include those in this repo … What kind of Claude skill
+could we craft and a sample prompt …?"
+
+**Assistant:** Consolidated the two ad-hoc `/tmp` scripts into a maintained
+`bin/ruflo-token-audit` (parameterized, `--json`, daemon cross-reference) and a user-scope
+`ruflo-token-audit` skill, wired skill deploy/uninstall into the kit, added README + this
+section, and provided sample prompts. Then (this turn) updated this document with
+everything to date.
