@@ -178,16 +178,31 @@ and deployed-copy source-test both clean.
 
 ---
 
-## Still open (next optimization)
+## Second optimization — per-session context tax (DONE)
 
 87% of tokens were cache-reads of a **fixed per-session context** — median 38K, max 111K
-tokens loaded *before any work* (large global `~/.claude/CLAUDE.md` + superpowers preamble
-+ deferred tool defs). With thousands of sessions this compounds. Next lever: trim the
-global `CLAUDE.md` (keep always-relevant rules; move the long ruflo reference to
-on-demand). Every line removed has ~10,000× leverage across a week of sessions.
+tokens loaded *before any work* (global `~/.claude/CLAUDE.md` + superpowers preamble +
+deferred tool defs). The largest kit-controlled slice was the auto-loaded
+`ruflo-reference` block: a ~5.6K-token, 499-line CLI manual needed in full only
+occasionally.
+
+**Fix (chosen: compact pointer):**
+- `claude/ruflo-reference.md` → compact ~40-line pointer block (832 tokens): CLI-not-MCP
+  principle, when-not-to-use, most-used commands, decision tree, daemon-hygiene safeguard,
+  and a pointer to the full doc + `ruflo <cmd> --help`.
+- `claude/ruflo-reference-full.md` → NEW: the complete reference, deployed to
+  `~/.config/ruflo/ruflo-reference-full.md` but **not** injected into CLAUDE.md (read on
+  demand). Nothing lost.
+- `install.sh` deploys the full doc alongside the compact template;
+  `ruflo-reference-refresh --regenerate` stays compact.
+
+**Result:** live global `~/.claude/CLAUDE.md` **728 → 294 lines, ~8,628 → ~3,889 tokens
+(-55%, ~4,740 tokens/session saved).** Out of scope (not kit-controlled): the base system
+prompt, tool/skill manifests, and the superpowers SessionStart preamble.
 
 **Post-fix validation:** re-run the 7-day audit in a few days; expect sessions/day and
-total tokens to drop sharply now that the daemons are gone.
+total tokens to drop sharply now that the daemons are gone and the per-session block is
+~4.7K tokens lighter.
 
 ---
 
@@ -239,5 +254,8 @@ statusline `⚙` appears after a project's `statusline.cjs` is re-injected.
 docs/usage/token-consumption-findings-and-mitigation-2026-06.md. Then, let's commit this
 work and push. Then, let's work on the other optimizations you suggested."
 
-**Assistant:** Wrote this document; committed and pushed the kit changes; proceeded to the
-global `CLAUDE.md` context-tax optimization.
+**Assistant:** Wrote this document; committed and pushed the kit changes (`b168454`);
+then executed the global `CLAUDE.md` context-tax optimization — compacted the
+`ruflo-reference` block from ~5.6K to ~0.8K tokens (full reference preserved on-demand),
+cutting the live global CLAUDE.md by 55% (~4,740 tokens/session), committed and pushed
+(`c48b708`).
