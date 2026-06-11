@@ -39,7 +39,15 @@ init` (and `swarm init`, `daemon start`) **after** pinning the DB path.
 
 ### 4. (ROOT) Node 24/26 + better-sqlite3@^11.8.1 → buggy WASM fallback
 
-Even with 1–3 fixed, on **Node 26** writes still silently failed. The cause:
+> **Status: resolved upstream in ruflo v3.10.6** ([#2219](https://github.com/ruvnet/ruflo/issues/2219)).
+> ruflo added an npm `overrides` entry forcing `better-sqlite3 ≥12.8.0` across the agentdb
+> copies (with a CI guard), so the WASM fallback below no longer happens by default on
+> ruflo ≥3.10.6 — and because the override is in ruflo's own `package.json`, upgrades keep
+> it. The investigation below is retained as the root-cause record; `ruflo-patch-native` is
+> now a safety net (still relevant for ruflo <3.10.6 and for the separate **agentic-qe**
+> package — see below).
+
+Even with 1–3 fixed, on **Node 26** writes still silently failed (pre-3.10.6). The cause:
 
 - ruflo prefers native `better-sqlite3`; sql.js (WASM) is a *fallback*.
 - The deeper `agentdb` packages pin **`better-sqlite3@^11.8.1`**.
@@ -71,11 +79,13 @@ that's a different axis.)
 
 `@claude-flow/memory` already pins `better-sqlite3@^12.9.0` (has Node 24/26
 prebuilts), and the `ruflo memory` CLI resolves better-sqlite3 from there — so on
-a fresh install the memory CLI uses **native** v12 and works. The buggy WASM path
-remains for the deeper `agentdb` copies under `@claude-flow/cli`,
-`@claude-flow/neural`, and `agentic-flow` (used by neural training, the
-vector-unified mode, and swarm shared-memory). `ruflo-patch-native` brings those
-to native v12 too.
+a fresh install the memory CLI uses **native** v12 and works. Pre-3.10.6 the buggy
+WASM path remained for the deeper `agentdb` copies under `@claude-flow/cli`,
+`@claude-flow/neural`, and `agentic-flow` (neural training, vector-unified mode,
+swarm shared-memory); `ruflo-patch-native` brought those to native v12. **On ruflo
+≥3.10.6 the upstream `overrides` already do this** — those copies resolve to native
+v12 by default (verified on 3.10.40: `better-sqlite3 v12.10.0`, native binary
+present), so the patch is now only a fallback.
 
 ## The fix is API-safe
 
@@ -100,8 +110,11 @@ usage is the common subset. No code changes required.
 - The sql.js reader can't replay an uncheckpointed `.swarm/memory.db-wal`,
   producing stale 0-row reads until `PRAGMA wal_checkpoint(TRUNCATE)`.
 
-All of the above are filed/summarized in
-[ruvnet/ruflo#2219](https://github.com/ruvnet/ruflo/issues/2219).
+All of the above were filed/summarized in
+[ruvnet/ruflo#2219](https://github.com/ruvnet/ruflo/issues/2219), **resolved in ruflo
+v3.10.6** (the `better-sqlite3 ≥12.8.0` override). The MCP-cruft and WASM-delete/WAL
+footguns that aren't strictly the Node-ABI bug are still neutralized by the kit's
+`ruflo-setup-project` sanitization.
 
 ## Self-learning activation (the second investigation)
 

@@ -96,7 +96,9 @@ wording was imprecise and was *not* carried over verbatim:
     into a unit-norm update** for a no-information signal.
 - Reproduced with a `cargo test` against the real crate (`crates/sona/tests/repro_delta_zero.rs`,
   included verbatim in #519). Consuming a *working* adapter downstream in ruflo is a follow-up
-  gated on ruvector exposing a non-inert seam — not a kit patch. **[Open — filed at ruvector.]**
+  gated on ruvector exposing a non-inert seam — not a kit patch. **[#519 closed 2026-06-11
+  without a published fix; the live follow-up is [ruvnet/RuVector#553](https://github.com/ruvnet/RuVector/issues/553)
+  — `processInstantLearning` still a no-op stub in the published `@ruvector/ruvllm` 2.5.5.]**
 
 ### F5 — With F2 fixed, the route learner self-improves — significantly but modestly
 Our held-out, ablated, multi-seed experiment (`ruflo-improvement-eval`) over a synthetic

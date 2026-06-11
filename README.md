@@ -27,7 +27,7 @@ This kit closes all of those gaps with a few small, reversible helper scripts �
 
 | You want… | Stock ruflo on Node 24/26 | With this kit |
 |---|---|---|
-| 💾 Memory that persists across sessions | Says "saved" but loses data | Saves for real, and **verifies** it landed on disk |
+| 💾 Memory that persists across sessions | Lost data pre-3.10.6; native by default on ≥3.10.6 (never *verified*) | Saves for real, and **verifies** it landed on disk |
 | 🧠 Self-learning that's actually on | Reports "Not loaded" | **Active & proven** (trains → patterns persist) |
 | 🛡️ Security scanning | Ships but undocumented/unverified | **Verified**: scan, secrets, prompt-injection defense |
 | 🎓 Agentic-QE quality fleet (optional) | `aqe init` fails on Node 24/26 | **Installs cleanly** (same bug, auto-fixed) |
@@ -39,13 +39,14 @@ This kit closes all of those gaps with a few small, reversible helper scripts �
 
 ## 🧩 What's actually wrong (the short story)
 
-Modern Node.js (24 and 26) changed its native-addon ABI. ruflo's deeper dependencies pin an **old `better-sqlite3`** that has no prebuilt binary for those Node versions and won't compile against them. npm treats it as optional and **skips it silently**, so ruflo drops to a pure-JavaScript SQLite fallback whose write path **loses data** — while still printing success.
+Modern Node.js (24 and 26) changed its native-addon ABI. ruflo's deeper dependencies *declared* an **old `better-sqlite3`** with no prebuilt for those Node versions; npm skipped it silently and ruflo dropped to a pure-JavaScript SQLite fallback whose write path **lost data while printing success**. **ruflo v3.10.6 fixed this upstream** ([#2219](https://github.com/ruvnet/ruflo/issues/2219)) with an npm `overrides` entry that forces `better-sqlite3 ≥12.8.0` (Node 20–26 prebuilts), so on current ruflo the memory bug **no longer bites by default**.
 
-That single root cause cascades:
+What this kit still adds, because the override doesn't cover everything:
 
-1. 💾 **Memory loss** — the headline symptom.
-2. 🧠 **Dormant self-learning** — the same missing binary keeps the ruvector engine (SONA, HNSW, ReasoningBank) asleep.
-3. 🎓 **Agentic-QE won't initialize** — it's a *separate* package ([`agentic-qe`](https://github.com/proffesor-for-testing/agentic-qe)) with the *same* bug.
+1. 💾 **Verifies memory actually persists** — a real store→disk check, instead of trusting `doctor`'s "healthy". (The data-loss bug itself is now fixed upstream on ruflo ≥3.10.6.)
+2. 🧠 **Activates & proves self-learning** — puts the native binary in place where needed and *asserts* the ruvector engine (SONA, HNSW, ReasoningBank) is genuinely on, not just reported on.
+3. 🎓 **Agentic-QE won't initialize** — it's a *separate* package ([`agentic-qe`](https://github.com/proffesor-for-testing/agentic-qe)) **not** covered by ruflo's override, so it still hits the same Node-ABI wall; `ruflo-setup-aqe` fixes it.
+4. 🧹 **MCP-cruft, token, and daemon hygiene** — strips committed `.mcp.json`, keeps sessions CLI-lean, and (as of the [token-consumption work](docs/usage/token-consumption-findings-and-mitigation-2026-06.md)) makes the background daemon opt-in + self-reaping.
 
 > 📎 **A note on prior art.** A colleague, **Ciprian Melian**, wrote an excellent project-scoped repair kit as a gist ([link](https://gist.github.com/ciprianmelian/eb7e8ff7d24018141ca34bb8a7e216a6)) that pairs ruflo with agentic-qe. This kit builds on those ideas but takes a **machine-wide, upgrade-safe** approach — and our investigation found that several of the gist's source patches are now **already upstream in ruflo 3.10.5** (the real remaining lever is the missing native binary, not the source patches). The full story is in [docs/BACKGROUND.md](docs/BACKGROUND.md).
 
@@ -228,17 +229,24 @@ ruflo-resync --aqe              # …and also refresh agentic-qe skills
 
 ---
 
-## 🧬 Node version policy (important)
+## 🧬 Node version policy
 
-ruflo's memory & learning are healthy out of the box on **Node 22 LTS**, and need the patch on **Node 24/26**:
+**As of ruflo v3.10.6 this is largely handled upstream** ([#2219](https://github.com/ruvnet/ruflo/issues/2219)):
+ruflo now forces `better-sqlite3 ≥12.8.0` (Node 20–26 prebuilts) via an npm `overrides`
+entry, so the agentdb copies resolve to native v12 even on Node 24/26 — no more silent JS
+fallback by default, and the override survives upgrades.
 
-| Node | ABI | Stock backend | What to do |
-|------|-----|---------------|------------|
-| ≤ 22 (LTS) | ≤ 127 | ✅ native | nothing — `ruflo-resync` just confirms green |
-| 24 | 137 | ⚠️ JS fallback (loses data) | `ruflo-resync` |
-| 26 | 147 | ⚠️ JS fallback (loses data) | `ruflo-resync` |
+| Node | ABI | Stock backend (ruflo ≥3.10.6) | What to do |
+|------|-----|-------------------------------|------------|
+| ≤ 22 (LTS) | ≤ 127 | ✅ native | nothing |
+| 24 | 137 | ✅ native (v12 via override) | nothing — `ruflo-resync` re-asserts if ever needed |
+| 26 | 147 | ✅ native (v12 via override) | nothing — `ruflo-resync` re-asserts if ever needed |
 
-The patch keys off Node's ABI, so it's safe to run on any version (it no-ops where unneeded). Prefer zero patching? Run ruflo on **Node 22 LTS**.
+`ruflo-patch-native` is now a **safety net** rather than a requirement. It still matters in
+two cases: **ruflo < 3.10.6** on Node ≥24 (no override yet → WASM fallback), and
+**agentic-qe** (a separate package with its own native-SQLite init — `ruflo-setup-aqe`
+repairs it). It keys off Node's ABI and no-ops where unneeded, so it's always safe to run.
+Prefer to sidestep the whole topic? Run ruflo on **Node 22 LTS**.
 
 ---
 
@@ -257,7 +265,7 @@ ruflo init --full --start-all --force && claude mcp add ruflo -- ruflo mcp start
 | 🔭 **Mindset** | Per-project, repeated every repo | Configure the machine once, reuse everywhere |
 | 📄 **`.mcp.json`** | Written with cloud-SaaS servers — easy to commit by accident | Stripped; nothing project-scoped committed unless you mean it |
 | 💰 **Token cost** | MCP always on → ~84k tokens/session | MCP optional; CLI-first reference keeps sessions lean |
-| 💾 **Memory on Node 24/26** | `doctor` says "healthy" while writes silently vanish | Native SQLite + a real store→disk verification |
+| 💾 **Memory on Node 24/26** | healthy on ruflo ≥3.10.6 (upstream override); the one-liner never *verifies* it landed | Native SQLite **plus** a real store→disk verification — and catches the `<3.10.6` / agentic-qe gaps the override misses |
 | 🧠 **Self-learning** | Looks "Not loaded"; no way to tell if it works | Activated and **proven** via a train/persist test |
 | ↩️ **Reversibility** | Manual cleanup | `uninstall.sh` reverses the setup with backups (`--this-project` also reverts a repo's statusline) |
 
@@ -272,22 +280,31 @@ ruflo-machine-ref/
 ├── install.sh                 # machine bootstrap: prereqs + kit + heal (profiles, interactive)
 ├── uninstall.sh               # clean reversal (opt-in --purge for global npm packages)
 ├── bin/
-│   ├── ruflo-patch-native     # native better-sqlite3 on Node ≥24
-│   ├── ruflo-parity-test      # 20-check end-to-end memory smoke test
-│   ├── ruflo-enable-learning  # activate + assert ruvector self-learning
-│   ├── ruflo-learning-verify  # prove the learning loop persists
-│   └── ruflo-security-verify  # verify security scan/defend/secrets + aidefence
+│   ├── ruflo-patch-native       # native better-sqlite3 (safety net; see Node policy)
+│   ├── ruflo-parity-test        # 20-check end-to-end memory smoke test
+│   ├── ruflo-enable-learning    # activate + assert ruvector self-learning
+│   ├── ruflo-learning-verify    # prove the learning loop persists
+│   ├── ruflo-improvement-eval   # causal self-improvement eval (route Q-learner)
+│   ├── ruflo-patch-route-learning # retired no-op on ruflo ≥3.10.6 (kept for older installs)
+│   ├── ruflo-security-verify    # verify security scan/defend/secrets + aidefence
+│   └── ruflo-token-audit        # audit token usage across sessions (daemon cross-ref)
 ├── shell/
-│   └── ruflo-functions.sh     # ruflo-resync, ruflo-onboard, ruflo-setup-project, ruflo-setup-aqe, …
+│   ├── ruflo-functions.sh     # ruflo-resync, ruflo-onboard, ruflo-setup-project, ruflo-daemon-gc, …
+│   └── ruflo-lib.sh           # shared helpers (deployed to ~/.config/ruflo for the bin scripts)
 ├── claude/
-│   ├── ruflo-reference.md         # the machine-wide CLAUDE.md ruflo block (always on, CLI-first)
+│   ├── ruflo-preamble.md          # always-on operating rules (top of the CLAUDE.md block)
+│   ├── ruflo-reference.md         # compact CLI-first CLAUDE.md block (always on)
+│   ├── ruflo-reference-full.md    # full reference, deployed on-demand (not auto-loaded)
 │   ├── aqe-reference.md           # conditional block — present only when agentic-qe is installed
-│   └── superpowers-reference.md   # conditional block — house rules so superpowers + ruflo coexist
+│   ├── superpowers-reference.md   # conditional block — house rules so superpowers + ruflo coexist
+│   └── skills/                    # user-scope Claude skills (e.g. ruflo-token-audit)
 └── docs/
     ├── BACKGROUND.md          # the full root-cause story (memory + learning + aqe + security)
     ├── TROUBLESHOOTING.md     # symptom → diagnosis → fix
     ├── CONDITIONAL-BLOCKS.md  # how the per-tool CLAUDE.md blocks work + how to add one
-    └── superpowers/           # the design spec + implementation plan
+    ├── usage/                 # token-consumption findings & mitigation
+    ├── upstream/              # upstream bug findings filed against ruflo / ruvector
+    └── superpowers/           # the design specs + implementation plans
 ```
 
 ---
@@ -330,7 +347,7 @@ This kit stands on the shoulders of several projects and people:
 - 🧠 **ruflo** (a.k.a. claude-flow) by ruvnet — the orchestration toolkit this kit configures: <https://github.com/ruvnet/ruflo>
 - 🎓 **agentic-qe** by *proffesor-for-testing* — the standalone quality-engineering fleet: <https://github.com/proffesor-for-testing/agentic-qe>
 - 📎 **Ciprian Melian's setup-and-repair gist** — prior art that paired ruflo with agentic-qe and inspired this kit's direction: <https://gist.github.com/ciprianmelian/eb7e8ff7d24018141ca34bb8a7e216a6>
-- 🐞 **Upstream tracking issue** for the memory/Node bug family: [ruvnet/ruflo#2219](https://github.com/ruvnet/ruflo/issues/2219)
+- 🐞 **Upstream issue** for the memory/Node bug family, [ruvnet/ruflo#2219](https://github.com/ruvnet/ruflo/issues/2219) — **resolved in ruflo v3.10.6** (an npm override pins `better-sqlite3 ≥12.8.0` across the agentdb copies); the kit's native patch is now a safety net rather than a requirement
 - 🗄️ **better-sqlite3** — the native SQLite binding at the heart of the fix: <https://github.com/WiseLibs/better-sqlite3>
 - 🤖 **Claude Code** by Anthropic — the agent this all runs inside: <https://claude.com/claude-code>
 

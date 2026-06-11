@@ -103,38 +103,38 @@ doubt — see diagnostic table below.
 | > 0 | > main DB | Data in WAL only → **WAL blindness** (#2), checkpoint to fix |
 | 0 | 0 | Write never landed → **broken env var** (#3) or **Node-version/WASM** (below) |
 
-### Node version compatibility (the ROOT cause of the WASM bugs)
+### Node version compatibility (historically the ROOT cause of the WASM bugs)
 
-The sql.js (WASM) backend is a *fallback*. ruflo prefers native `better-sqlite3`,
-but the deeper `agentdb` packages pin `better-sqlite3@^11.8.1`, which has **no
-prebuilt for Node 24+ and won't compile against Node 26's V8**. On modern Node it
-silently drops to WASM — where the write/WAL/delete bugs above live.
+> **Resolved upstream in ruflo v3.10.6** ([ruvnet/ruflo#2219](https://github.com/ruvnet/ruflo/issues/2219)).
+> ruflo now ships an npm `overrides` entry forcing `better-sqlite3 ≥12.8.0` (which has
+> Node 20–26 prebuilts) across the agentdb copies, with a CI guard. So on ruflo ≥3.10.6
+> the WASM fallback **no longer happens by default**, even on Node 24/26, and the override
+> lives in ruflo's own `package.json` — an `npm i -g ruflo` upgrade keeps it, it does not
+> wipe it. `ruflo-patch-native` is now a **safety net**, not a requirement.
 
-| Node | ABI | agentdb's `better-sqlite3@^11.8.1` | Backend used |
-|------|-----|-----------------------------------|--------------|
-| ≤ 22 (LTS) | ≤ 127 | ✅ prebuilt, builds natively | **native — no bugs** |
-| 24 | 137 | ❌ no prebuilt, compile fails | sql.js WASM (buggy) |
-| 26 | 147 | ❌ no prebuilt, compile fails | sql.js WASM (buggy) |
+Background (why the bug existed, and the two cases where patching still matters):
 
-`@claude-flow/memory` already moved to `better-sqlite3@^12.9.0` (has Node 24/26
-prebuilts), so the **`ruflo memory` CLI works natively** even on Node 26. Only the
-deeper `agentdb` copies (neural, vector-unified, swarm memory, agentic-flow) lag
-on `^11.8.1` → WASM.
+The sql.js (WASM) backend is a *fallback*. ruflo prefers native `better-sqlite3`. The
+deeper `agentdb` packages still *declare* `better-sqlite3@^11.8.1` (no prebuilt for Node
+24+, won't compile against Node 26's V8) — but ruflo's `overrides` resolve that to v12 at
+install time, so the declared pin no longer decides the backend.
 
-**Decision rule — when to patch:**
-- **Node ≤ 22**: native works everywhere; nothing to do.
-- **Node ≥ 24**: run `ruflo-patch-native` (installs `better-sqlite3@^12` into the
-  agentdb locations that lack a binary; idempotent; no-op on Node ≤ 22). v12 is
-  API-compatible with agentdb's v11-era usage — verified, no breakage.
-- **Re-run `ruflo-patch-native` after every `npm install -g ruflo` upgrade** — the
-  upgrade re-resolves the `^11.8.1` pin and wipes the patch.
+| Node | ABI | ruflo ≥3.10.6 (override → v12) | ruflo <3.10.6 (declared ^11.8.1) |
+|------|-----|-------------------------------|----------------------------------|
+| ≤ 22 (LTS) | ≤ 127 | **native** | native |
+| 24 | 137 | **native (v12 prebuilt)** | ❌ WASM (buggy) |
+| 26 | 147 | **native (v12 prebuilt)** | ❌ WASM (buggy) |
 
-To check current state without changing anything: `ruflo-patch-native --check`.
-The Node-version gate inside the helper keys off `process.versions.modules` (ABI):
-patch when ABI ≥ 137, skip when ABI ≤ 131.
+**When `ruflo-patch-native` still earns its keep:**
+- **ruflo < 3.10.6** on Node ≥24 — no override yet, so the agentdb copies fall to WASM;
+  patch (or upgrade ruflo) to fix.
+- **agentic-qe** — a *separate* package with its own native-SQLite init that the override
+  doesn't cover; `ruflo-setup-aqe` repairs it.
+- As an idempotent re-assert if anything ever resolves a stale v11 binary.
 
-Alternative to patching: run ruflo on **Node 22 LTS** (e.g. `mise install node@22`),
-where the native backend resolves cleanly with no patch.
+To check current state without changing anything: `ruflo-patch-native --check` (it reports
+`already native` when the override has done its job). Alternative to all of this: run ruflo
+on **Node 22 LTS** (e.g. `mise install node@22`), where native resolves cleanly regardless.
 
 ### Hooks (learning + routing + workers)
 

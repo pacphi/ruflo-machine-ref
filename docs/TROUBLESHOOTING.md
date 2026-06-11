@@ -17,7 +17,7 @@ ls -l .swarm/memory.db .swarm/memory.db-wal
 | > 0 | WAL **<** main | Data exists; ruflo read hit a different DB → **cwd drift** | Pin `CLAUDE_FLOW_DB_PATH` (absolute) |
 | > 0 | WAL **>** main | Data only in WAL; WASM reader can't replay it → **WAL blindness** | `ruflo-memory-checkpoint` |
 | 0 | 0 | Write never landed → **broken env var** or **Node-version/WASM** | see below |
-| 0 (Node ≥24) | 0 | agentdb on buggy sql.js WASM | `ruflo-patch-native` |
+| 0 (Node ≥24, ruflo <3.10.6) | 0 | agentdb on buggy sql.js WASM | upgrade ruflo (≥3.10.6) or `ruflo-patch-native` |
 
 ### cwd drift
 Each Claude Code Bash call may run in a different cwd. Pin the DB:
@@ -38,18 +38,24 @@ ruflo-memory-checkpoint              # PRAGMA wal_checkpoint(TRUNCATE) on cwd DB
 ruflo-memory-checkpoint /path/db     # explicit
 ```
 
-### Node 24/26 WASM fallback (the root cause)
+### Node 24/26 WASM fallback (historically the root cause — fixed upstream in 3.10.6)
+
+On **ruflo ≥3.10.6** this is handled by an upstream `better-sqlite3 ≥12.8.0` override
+([#2219](https://github.com/ruvnet/ruflo/issues/2219)) — the agentdb copies resolve to
+native v12 by default, and the override survives upgrades. So the first move is simply to
+be on a current ruflo. The patch remains for **ruflo <3.10.6** (or as a re-assert):
 ```bash
-ruflo-patch-native --check          # is agentdb on WASM?
-ruflo-patch-native                  # patch to native better-sqlite3@^12
+ruflo --version                     # ≥3.10.6 means the override already applies
+ruflo-patch-native --check          # reports "already native" when the override did its job
+ruflo-patch-native                  # only needed on <3.10.6 (or to re-assert a stale binary)
 ```
-Re-run after every `npm install -g ruflo`.
 
 ## "✅ Using sql.js (WASM SQLite, no build tools required)" appears
 
-That banner means a code path took the WASM fallback. Fine on Node ≤22 only if
-it's actually native (it won't print then). On Node ≥24 it signals the buggy
-path → `ruflo-patch-native`.
+That banner means a code path took the WASM fallback. On ruflo ≥3.10.6 you shouldn't see
+it for memory/agentdb (the override forces native v12); if you do, you're likely on
+ruflo <3.10.6 or a stale binary → upgrade ruflo or run `ruflo-patch-native`. (agentic-qe is
+separate — `ruflo-setup-aqe` repairs its native init.)
 
 ## `ruflo memory delete` says deleted but the row remains
 
@@ -186,25 +192,30 @@ ruflo-setup-project                 # re-create cleanly
 `the temp filesystem at /private/tmp/claude-501/<project>/<uuid>/tasks is full
 (0MB free)`, and/or `ps axww | grep "daemon start"` shows many `ruflo daemon`
 processes — some pointed at `--workspace` directories that no longer exist
-(e.g. `/tmp/test-*` from `ruflo-parity-test` runs). See issue #3.
+(e.g. `/tmp/test-*` from `ruflo-parity-test` runs). Tracked in issue #3 (resolved).
 
-**Why.** `ruflo-setup-project` starts a per-workspace `ruflo daemon` (this is what
-makes self-learning continuous). Before this fix, nothing stopped them, so each
-throwaway/removed workspace left a daemon running forever. Separately, the
-statusline footer used to spawn several `sqlite3` subprocesses on every render;
-that volume of captured subprocess output is what fills Claude Code's size-limited
-sandbox `tasks` tmpfs.
+**Why.** Historically `ruflo-setup-project` auto-started a per-workspace `ruflo
+daemon` and nothing ever stopped it, so each onboarded (or throwaway) workspace
+left a daemon running forever — which also kept spawning worker sessions (see
+[token-consumption findings](usage/token-consumption-findings-and-mitigation-2026-06.md)).
+Separately, the statusline footer used to spawn several `sqlite3` subprocesses on
+every render; that volume of captured subprocess output is what fills Claude
+Code's size-limited sandbox `tasks` tmpfs.
 
-**Fix is built in now.** The statusline footer caches its QE metrics
-(`RUFLO_QE_STATUSLINE_TTL_MS`, default 60000ms) and makes at most one `sqlite3`
-call per TTL window. The daemon start is idempotent per workspace, and orphans are
-reaped.
+**Fix is built in now.** The daemon is **opt-in** — `ruflo-setup-project` no longer
+starts one. If you start one yourself (`ruflo daemon start`), it is reaped once it
+is orphaned (workspace gone) or exceeds `RUFLO_DAEMON_TTL_SECS` (default 12h), and
+an auto-reaper runs on interactive shell start. A running count shows as
+`⚙ N ruflo daemons` (yellow at ≥3) in the statusline. The footer also caches its QE
+metrics (`RUFLO_QE_STATUSLINE_TTL_MS`, default 60000ms) — at most one `sqlite3`
+call per TTL window.
 
-**Reap existing orphans:**
+**Inspect / reap daemons:**
 
 ```bash
-ruflo-daemon-gc            # list daemons whose --workspace is gone
-ruflo-daemon-gc --kill     # stop exactly those (live-project daemons untouched)
+ruflo-daemon-gc            # list STALE daemons (orphaned OR older than the TTL)
+ruflo-daemon-gc --kill     # stop exactly those (live-project daemons within TTL untouched)
+ruflo-token-audit          # see whether daemons are inflating your token usage
 ```
 
 `uninstall.sh` also reaps stale daemons; `uninstall.sh --this-project` additionally
