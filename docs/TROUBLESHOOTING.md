@@ -54,8 +54,32 @@ ruflo-patch-native                  # only needed on <3.10.6 (or to re-assert a 
 
 That banner means a code path took the WASM fallback. On ruflo ≥3.10.6 you shouldn't see
 it for memory/agentdb (the override forces native v12); if you do, you're likely on
-ruflo <3.10.6 or a stale binary → upgrade ruflo or run `ruflo-patch-native`. (agentic-qe is
-separate — `ruflo-setup-aqe` repairs its native init.)
+ruflo <3.10.6, on **npm ≥ 11.17** (see next entry), or a stale binary → upgrade ruflo or
+run `ruflo-patch-native`. (agentic-qe is separate — `ruflo-setup-aqe` repairs its native init.)
+
+## After a global upgrade on npm ≥ 11.17, native addons fall back to WASM
+
+**Symptom.** Right after `npm update -g` / `npm i -g ruflo@latest` (or `agentic-qe@latest`),
+memory/learning act broken even though ruflo is ≥3.10.6. The upgrade printed
+`npm warn allow-scripts   better-sqlite3@… (install: prebuild-install || node-gyp rebuild)`,
+and `ruflo-patch-native --check` now reports **"needs patch"**.
+
+**Why.** npm **11.17** introduced **`allow-scripts`**, which blocks packages' install /
+postinstall lifecycle scripts by default. `better-sqlite3` builds (or downloads) its native
+`.node` binary in an `install` script (`prebuild-install`), so the upgrade **skips it
+silently** — even though ruflo's `#2219` override resolves `better-sqlite3` to a
+prebuild-capable v12, the prebuilt is never fetched. ruflo then drops to buggy WASM. This
+makes the kit's native patch **more** necessary after an upgrade, not less.
+
+**Fix.**
+```bash
+ruflo-resync                        # runs ruflo-patch-native; installs the native binary
+                                    # even under allow-scripts (verified on npm 11.17)
+ruflo-patch-native --check          # expect "already native" afterward
+```
+Alternatively, allow the blocked builds globally before re-resolving:
+`npm approve-scripts --allow-scripts-pending` (npm's own remedy), then `ruflo-resync`. The
+kit's resync handles it without that step.
 
 ## `ruflo memory delete` says deleted but the row remains
 

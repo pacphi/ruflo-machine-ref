@@ -126,6 +126,10 @@ install time, so the declared pin no longer decides the backend.
 | 26 | 147 | **native (v12 prebuilt)** | ❌ WASM (buggy) |
 
 **When `ruflo-patch-native` still earns its keep:**
+- **npm ≥ 11.17** — npm's new `allow-scripts` blocks `better-sqlite3`'s build/`prebuild-install`
+  during a global upgrade, so the native `.node` is skipped (the override resolves v12 but the
+  prebuilt is never fetched) → WASM. **Always run `ruflo-resync` after a global upgrade on npm
+  ≥ 11.17**; its `ruflo-patch-native` step installs the binary even under `allow-scripts`.
 - **ruflo < 3.10.6** on Node ≥24 — no override yet, so the agentdb copies fall to WASM;
   patch (or upgrade ruflo) to fix.
 - **agentic-qe** — a *separate* package with its own native-SQLite init that the override

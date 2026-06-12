@@ -225,6 +225,15 @@ ruflo-resync                    # ✨ one command heals it all
 ruflo-resync --aqe              # …and also refresh agentic-qe skills
 ```
 
+> ⚠️ **On npm ≥ 11.17, `ruflo-resync` is now *more* necessary, not less.** npm 11.17
+> introduced **`allow-scripts`**, which blocks packages' install/postinstall scripts by
+> default — including `better-sqlite3`'s `prebuild-install` and `node-gyp`. So an upgrade
+> (even `npm update -g`) **silently skips the native addon build**, and ruflo falls back to
+> buggy WASM (you'll see `npm warn allow-scripts …` during the upgrade, and
+> `ruflo-patch-native --check` will report "needs patch" afterward). `ruflo-resync` heals
+> it — its `ruflo-patch-native` step installs the native binary *even under `allow-scripts`*
+> (verified on npm 11.17). **Always run `ruflo-resync` after a global upgrade on npm ≥ 11.17.**
+
 **After `git pull` on this kit itself:** Run `./install.sh --minimal` to copy the updated shell functions and CLAUDE.md template to `~/.config/ruflo/`. It is idempotent and won't reinstall npm packages. This is the right step whenever you pull a new version of this repo — `ruflo-resync` only heals native binaries and self-learning; it does not redeploy the kit files.
 
 ---

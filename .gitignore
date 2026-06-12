@@ -25,6 +25,7 @@ test-*.log
 # source"); never commit them.
 .agentic-qe/
 .claude/
+.mcp.json
 ruvector.db
 *.db
 CLAUDE.md.backup
